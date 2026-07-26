@@ -1,0 +1,47 @@
+import * as Location from 'expo-location';
+
+import { LOCATION_TASK_NAME } from './backgroundLocationTask';
+
+export async function requestTrackingPermissions(): Promise<void> {
+  const foreground = await Location.requestForegroundPermissionsAsync();
+  if (foreground.status !== 'granted') {
+    throw new Error('정확한 기록을 위해 위치 권한을 허용해 주세요.');
+  }
+
+  const background = await Location.requestBackgroundPermissionsAsync();
+  if (background.status !== 'granted') {
+    throw new Error(
+      '화면이 꺼져도 기록하려면 설정에서 위치 권한을 항상 허용해 주세요.',
+    );
+  }
+}
+
+export async function startBackgroundTracking(): Promise<void> {
+  const alreadyStarted =
+    await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+  if (alreadyStarted) return;
+
+  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
+    accuracy: Location.Accuracy.BestForNavigation,
+    timeInterval: 1000,
+    distanceInterval: 1,
+    deferredUpdatesInterval: 3000,
+    deferredUpdatesDistance: 5,
+    activityType: Location.ActivityType.Fitness,
+    pausesUpdatesAutomatically: false,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: 'nuni life 기록 중',
+      notificationBody: '일상의 이동 경로를 기기에 안전하게 저장하고 있어요.',
+      notificationColor: '#2DD4BF',
+    },
+  });
+}
+
+export async function stopBackgroundTracking(): Promise<void> {
+  const started =
+    await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
+  if (started) {
+    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
+  }
+}

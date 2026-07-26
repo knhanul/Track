@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "nuni life",
+    "slug": "nuni-life-native",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "platforms": ["android", "ios"],
+    "ios": {
+      "bundleIdentifier": "kr.co.nuni.life",
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIBackgroundModes": ["location"],
+        "NSLocationWhenInUseUsageDescription": "일상 이동 기록과 실시간 속도 표시를 위해 위치 정보가 필요합니다.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "화면이 꺼진 상태에서도 일상 이동 경로를 안전하게 기록하기 위해 위치 정보가 필요합니다."
+      }
+    },
+    "android": {
+      "package": "kr.co.nuni.life",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "일상 이동 기록과 실시간 속도 표시를 위해 위치 정보가 필요합니다.",
+          "locationAlwaysAndWhenInUsePermission": "화면이 꺼진 상태에서도 일상 이동 경로를 안전하게 기록하기 위해 위치 정보가 필요합니다.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-sqlite"
+    ],
+    "extra": {
+      "apiBaseUrl": ""
+    }
+  }
+}

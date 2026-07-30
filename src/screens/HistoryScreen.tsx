@@ -1,19 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
+import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { listLifeRecords } from '../database/recordRepository';
 import {
   formatDistance,
   formatDuration,
   formatElevation,
+  formatSyncStatus,
 } from '../domain/format';
 import type { LifeRecordSummary } from '../domain/models';
+import { colors, radius, spacing, typography } from '../theme';
 
 export function HistoryScreen() {
   const [records, setRecords] = useState<LifeRecordSummary[]>([]);
@@ -34,8 +36,9 @@ export function HistoryScreen() {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
+    <ScreenContainer
+      scrollable
+      contentStyle={styles.container}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
       }
@@ -62,11 +65,7 @@ export function HistoryScreen() {
                 </Text>
               </View>
               <Text style={styles.sync}>
-                {record.syncStatus === 'synced'
-                  ? '클라우드 저장'
-                  : record.syncStatus === 'pending'
-                    ? '업로드 대기'
-                    : '기기 저장'}
+                {formatSyncStatus(record.syncStatus)}
               </Text>
             </View>
             <View style={styles.row}>
@@ -81,52 +80,81 @@ export function HistoryScreen() {
           </View>
         ))
       )}
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingBottom: 40 },
+  container: {},
   eyebrow: {
-    color: '#58E2D2',
-    fontSize: 13,
-    fontWeight: '900',
+    ...typography.caption,
+    color: colors.primary,
     letterSpacing: 2,
-    marginTop: 12,
+    marginTop: spacing.sm,
   },
   title: {
-    color: '#F5FAFF',
-    fontSize: 34,
-    fontWeight: '900',
-    marginTop: 10,
+    ...typography.screenTitle,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
   },
   description: {
-    color: '#91A4BA',
-    lineHeight: 22,
-    marginTop: 10,
-    marginBottom: 24,
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
   },
   empty: {
-    padding: 30,
-    borderRadius: 24,
+    padding: spacing.xl,
+    borderRadius: radius.xl,
     alignItems: 'center',
-    backgroundColor: '#101E31',
-  },
-  emptyTitle: { color: '#F5FAFF', fontSize: 17, fontWeight: '800' },
-  emptyText: { color: '#8195AC', marginTop: 8 },
-  card: {
-    marginBottom: 13,
-    padding: 18,
-    borderRadius: 20,
-    backgroundColor: '#101E31',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1A304A',
+    borderColor: colors.border,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  emptyTitle: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  emptyText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  card: {
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
   cardTitleWrap: { flex: 1 },
-  cardTitle: { color: '#EFF7FF', fontSize: 17, fontWeight: '800' },
-  date: { color: '#7388A1', fontSize: 12, marginTop: 6 },
-  sync: { color: '#58E2D2', fontSize: 11, fontWeight: '800' },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 17 },
-  metric: { color: '#AFC0D3', fontSize: 13, fontWeight: '700' },
+  cardTitle: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  date: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: spacing.xxs,
+  },
+  sync: {
+    ...typography.caption,
+    color: colors.primary,
+  },
+  row: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  metric: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
 });

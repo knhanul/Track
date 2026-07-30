@@ -1,11 +1,15 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { API_BASE_URL } from '../sync/syncService';
+import { colors, radius, spacing, typography } from '../theme';
 
 export function SettingsScreen() {
+  const apiConfigured = Boolean(API_BASE_URL);
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScreenContainer scrollable contentStyle={styles.container}>
       <Text style={styles.eyebrow}>PROFILE</Text>
       <Text style={styles.title}>나</Text>
 
@@ -19,7 +23,7 @@ export function SettingsScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>클라우드 API</Text>
-        <Text style={styles.body}>
+        <Text style={[styles.body, !apiConfigured && styles.warningText]}>
           {API_BASE_URL
             ? API_BASE_URL
             : '아직 설정되지 않았습니다. .env의 EXPO_PUBLIC_API_BASE_URL을 입력하세요.'}
@@ -33,34 +37,42 @@ export function SettingsScreen() {
           오프라인 지도, GPX 가져오기·내보내기입니다.
         </Text>
       </View>
-    </ScrollView>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingBottom: 40 },
+  container: {},
   eyebrow: {
-    color: '#58E2D2',
-    fontSize: 13,
-    fontWeight: '900',
+    ...typography.caption,
+    color: colors.primary,
     letterSpacing: 2,
-    marginTop: 12,
+    marginTop: spacing.sm,
   },
   title: {
-    color: '#F5FAFF',
-    fontSize: 34,
-    fontWeight: '900',
-    marginTop: 10,
-    marginBottom: 20,
+    ...typography.screenTitle,
+    color: colors.textPrimary,
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
   },
   section: {
-    padding: 20,
-    borderRadius: 20,
-    marginBottom: 14,
-    backgroundColor: '#101E31',
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1A304A',
+    borderColor: colors.border,
   },
-  sectionTitle: { color: '#EEF7FF', fontSize: 16, fontWeight: '800' },
-  body: { color: '#91A4BA', fontSize: 14, lineHeight: 22, marginTop: 9 },
+  sectionTitle: {
+    ...typography.cardTitle,
+    color: colors.textPrimary,
+  },
+  body: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  warningText: {
+    color: colors.warning,
+  },
 });

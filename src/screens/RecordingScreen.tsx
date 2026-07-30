@@ -3,14 +3,15 @@ import {
   Alert,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionButton } from '../components/ActionButton';
+import { ScreenContainer } from '../components/layout/ScreenContainer';
 import { MetricCard } from '../components/MetricCard';
 import {
   formatDistance,
@@ -19,21 +20,24 @@ import {
   formatSpeed,
 } from '../domain/format';
 import type { RecorderController } from '../domain/models';
+import { colors, radius, spacing, typography } from '../theme';
 
 interface Props {
   recorder: RecorderController;
+  onCompleted(): void;
 }
 
-export function RecordingScreen({ recorder }: Props) {
+export function RecordingScreen({ recorder, onCompleted }: Props) {
   const metrics = recorder.metrics;
   const [momentOpen, setMomentOpen] = useState(false);
   const [momentText, setMomentText] = useState('');
+  const insets = useSafeAreaInsets();
 
   if (!metrics) {
     return (
-      <View style={styles.center}>
+      <ScreenContainer includeBottomTabSpace={false} contentStyle={styles.center}>
         <Text style={styles.statusText}>기록 데이터를 불러오고 있어요.</Text>
-      </View>
+      </ScreenContainer>
     );
   }
 
@@ -48,7 +52,11 @@ export function RecordingScreen({ recorder }: Props) {
         {
           text: '기록 종료',
           style: 'destructive',
-          onPress: () => void recorder.stop(),
+          onPress: () =>
+            void (async () => {
+              await recorder.stop();
+              onCompleted();
+            })(),
         },
       ],
     );
@@ -56,7 +64,11 @@ export function RecordingScreen({ recorder }: Props) {
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScreenContainer
+        scrollable
+        includeBottomTabSpace={false}
+        contentStyle={styles.container}
+      >
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>일상 기록 중</Text>
@@ -139,7 +151,7 @@ export function RecordingScreen({ recorder }: Props) {
           variant="danger"
           disabled={recorder.busy}
         />
-      </ScrollView>
+      </ScreenContainer>
 
       <Modal
         visible={momentOpen}
@@ -147,7 +159,10 @@ export function RecordingScreen({ recorder }: Props) {
         animationType="fade"
         onRequestClose={() => setMomentOpen(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setMomentOpen(false)}>
+        <Pressable
+          style={[styles.modalBackdrop, { paddingBottom: insets.bottom + spacing.md }]}
+          onPress={() => setMomentOpen(false)}
+        >
           <Pressable style={styles.modalCard} onPress={() => undefined}>
             <Text style={styles.modalTitle}>지금의 기억</Text>
             <Text style={styles.modalDescription}>
@@ -170,102 +185,108 @@ export function RecordingScreen({ recorder }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, paddingBottom: 44, gap: 16 },
+  container: { gap: spacing.md },
   center: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#07111F',
   },
-  statusText: { color: '#A9B8CC' },
+  statusText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
   header: {
-    marginTop: 8,
-    marginBottom: 3,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xxs,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   eyebrow: {
-    color: '#58E2D2',
-    fontSize: 12,
-    fontWeight: '900',
+    ...typography.caption,
+    color: colors.primary,
     letterSpacing: 1.4,
   },
   headerTitle: {
-    color: '#F5FAFF',
-    fontSize: 28,
-    fontWeight: '900',
-    marginTop: 6,
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+    marginTop: spacing.xxs,
   },
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: '#123A39',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.round,
+    backgroundColor: colors.primarySoft,
   },
-  pausedBadge: { backgroundColor: '#473C24' },
+  pausedBadge: { backgroundColor: colors.surfaceElevated },
   liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#58E2D2',
+    backgroundColor: colors.primary,
   },
-  pausedDot: { backgroundColor: '#F7C86B' },
+  pausedDot: { backgroundColor: colors.warning },
   liveText: {
-    color: '#E8F7F5',
-    fontSize: 11,
-    fontWeight: '900',
+    ...typography.caption,
+    color: colors.textPrimary,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   saveState: {
-    padding: 18,
-    borderRadius: 18,
-    backgroundColor: '#0B1A2B',
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#17304A',
+    borderColor: colors.border,
   },
-  saveStateTitle: { color: '#DDEAF5', fontSize: 14, fontWeight: '800' },
+  saveStateTitle: {
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
+  },
   saveStateText: {
-    color: '#7F94AD',
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 5,
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.xxs,
   },
-  error: { color: '#FF8B98', lineHeight: 20 },
-  actions: { flexDirection: 'row', gap: 12 },
+  error: {
+    ...typography.body,
+    color: colors.danger,
+  },
+  actions: { flexDirection: 'row', gap: spacing.sm },
   halfButton: { flex: 1 },
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    padding: 16,
-    backgroundColor: 'rgba(0,0,0,0.66)',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    backgroundColor: colors.overlay,
   },
   modalCard: {
-    padding: 22,
-    borderRadius: 26,
-    backgroundColor: '#101E31',
+    padding: spacing.xl,
+    borderRadius: radius.xl,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#29405B',
+    borderColor: colors.border,
   },
-  modalTitle: { color: '#F5FAFF', fontSize: 23, fontWeight: '900' },
+  modalTitle: {
+    ...typography.sectionTitle,
+    color: colors.textPrimary,
+  },
   modalDescription: {
-    color: '#8FA2B8',
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 8,
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   input: {
     minHeight: 120,
-    marginVertical: 18,
-    padding: 16,
-    borderRadius: 16,
-    color: '#F5FAFF',
-    backgroundColor: '#081525',
+    marginVertical: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
     textAlignVertical: 'top',
     borderWidth: 1,
-    borderColor: '#203A56',
+    borderColor: colors.border,
   },
 });

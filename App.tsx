@@ -1,25 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  SafeAreaView,
+  BackHandler,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { BottomTabs, type TabKey } from './src/components/BottomTabs';
 import { initializeDatabase } from './src/database/database';
 import { useRecorder } from './src/features/recording/useRecorder';
+import { RecordStartScreen } from './src/screens/RecordStartScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
-import { HomeScreen } from './src/screens/HomeScreen';
 import { RecordingScreen } from './src/screens/RecordingScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { TodayScreen } from './src/screens/TodayScreen';
 import { startNetworkSyncListener } from './src/sync/syncService';
+import { colors, spacing, typography } from './src/theme';
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent() {
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<TabKey>('today');
+  const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const [recordStartOpen, setRecordStartOpen] = useState(false);
+  const [todayRefreshSignal, setTodayRefreshSignal] = useState(0);
   const recorder = useRecorder();
 
   useEffect(() => {
@@ -35,52 +48,109 @@ export default function App() {
     return () => unsubscribe?.();
   }, []);
 
-  const content = useMemo(() => {
-    if (recorder.activeRecordId) {
-      return <RecordingScreen recorder={recorder} />;
+  useEffect(() => {
+    if (!recordStartOpen || recorder.activeRecordId) {
+      return;
     }
 
-    switch (tab) {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setRecordStartOpen(false);
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [recordStartOpen, recorder.activeRecordId]);
+
+  function handleRecordingCompleted() {
+    setRecordStartOpen(false);
+    setActiveTab('today');
+    setTodayRefreshSignal((previous) => previous + 1);
+  }
+
+  function handleSelectTab(tab: TabKey) {
+    setRecordStartOpen(false);
+    setActiveTab(tab);
+  }
+
+  function handleOpenRecord() {
+    setRecordStartOpen(true);
+  }
+
+  const content = useMemo(() => {
+    if (recorder.activeRecordId) {
+      return (
+        <RecordingScreen
+          recorder={recorder}
+          onCompleted={handleRecordingCompleted}
+        />
+      );
+    }
+
+    if (recordStartOpen) {
+      return <RecordStartScreen recorder={recorder} />;
+    }
+
+    switch (activeTab) {
       case 'history':
         return <HistoryScreen />;
       case 'settings':
         return <SettingsScreen />;
-      case 'record':
-        return <HomeScreen recorder={recorder} autoFocusStart />;
       case 'today':
       default:
-        return <HomeScreen recorder={recorder} />;
+        return (
+          <TodayScreen
+            recorder={recorder}
+            onOpenRecord={handleOpenRecord}
+            refreshSignal={todayRefreshSignal}
+          />
+        );
     }
-  }, [recorder, tab]);
+  }, [
+    activeTab,
+    handleRecordingCompleted,
+    recordStartOpen,
+    recorder,
+    todayRefreshSignal,
+  ]);
 
   if (!ready) {
     return (
-      <SafeAreaView style={styles.loading}>
-        <StatusBar barStyle="light-content" />
+      <View style={styles.loading}>
+        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
         <ActivityIndicator size="large" />
         <Text style={styles.loadingText}>기록 저장소를 준비하고 있어요.</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" />
+    <View style={styles.root}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       <View style={styles.content}>{content}</View>
-      {!recorder.activeRecordId && <BottomTabs active={tab} onChange={setTab} />}
-    </SafeAreaView>
+      {!recorder.activeRecordId && (
+        <BottomTabs
+          activeTab={activeTab}
+          recordStartActive={recordStartOpen}
+          onSelectTab={handleSelectTab}
+          onPressRecord={handleOpenRecord}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000000' },
+  root: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1 },
   loading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
-    backgroundColor: '#000000',
+    gap: spacing.md,
+    backgroundColor: colors.background,
   },
-  loadingText: { color: 'rgba(235,235,245,0.6)', fontSize: 15 },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
 });

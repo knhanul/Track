@@ -1,0 +1,45 @@
+import React from 'react';
+import { StyleSheet, Text } from 'react-native';
+
+import { formatSyncStatus } from '../domain/format';
+import type { SyncStatus } from '../domain/models';
+import { colors, typography } from '../theme';
+
+interface SyncStatusBadgeProps {
+  status: SyncStatus;
+  compact?: boolean;
+}
+
+export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProps) {
+  return (
+    <Text style={[styles.base, compact && styles.compact, { color: getStatusColor(status) }]}>
+      {formatSyncStatus(status)}
+    </Text>
+  );
+}
+
+function getStatusColor(status: SyncStatus): string {
+  switch (status) {
+    case 'pending':
+      return colors.warning;
+    case 'syncing':
+      return colors.primary;
+    case 'synced':
+      return colors.success;
+    case 'failed':
+      return colors.danger;
+    case 'local_only':
+    default:
+      return colors.textSecondary;
+  }
+}
+
+const styles = StyleSheet.create({
+  base: {
+    ...typography.caption,
+    fontWeight: '700',
+  },
+  compact: {
+    lineHeight: 16,
+  },
+});

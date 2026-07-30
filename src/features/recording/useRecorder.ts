@@ -9,7 +9,7 @@ import {
 } from '../../database/recordRepository';
 import type { LiveMetrics, RecorderController } from '../../domain/models';
 import {
-  requestTrackingPermissions,
+  ensureTrackingReadyPermissions,
   startBackgroundTracking,
   stopBackgroundTracking,
 } from '../../location/locationService';
@@ -51,14 +51,17 @@ export function useRecorder(): RecorderController {
 
   const restore = useCallback(async () => {
     const id = await getActiveRecordId();
-    if (!id) return;
+    if (!id) {
+      await stopBackgroundTracking();
+      return;
+    }
     setActiveRecordId(id);
     await refresh(id);
   }, [refresh]);
 
   const start = useCallback(async () => {
     await run(async () => {
-      await requestTrackingPermissions();
+      await ensureTrackingReadyPermissions();
       const id = await createLifeRecord();
       setActiveRecordId(id);
       await startBackgroundTracking();

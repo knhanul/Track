@@ -1,6 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { colors, radius, spacing, typography } from '../theme';
+
 interface Props {
   label: string;
   value: string;
@@ -26,44 +28,40 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     minWidth: 140,
-    paddingHorizontal: 18,
-    paddingVertical: 17,
-    borderRadius: 20,
-    backgroundColor: '#101E31',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#1A304A',
+    borderColor: colors.border,
   },
   prominent: {
     alignItems: 'center',
-    paddingVertical: 28,
-    backgroundColor: '#0D2631',
-    borderColor: '#1E6A6A',
+    paddingVertical: spacing.xxl,
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryStrong,
   },
   label: {
-    color: '#91A4BB',
-    fontSize: 13,
-    fontWeight: '600',
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   valueLine: {
-    marginTop: 7,
+    marginTop: spacing.xs,
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 6,
+    gap: spacing.xs,
   },
   value: {
-    color: '#F5FAFF',
-    fontSize: 27,
-    fontWeight: '800',
+    ...typography.metricMedium,
+    color: colors.textPrimary,
     fontVariant: ['tabular-nums'],
   },
   prominentValue: {
-    fontSize: 68,
-    lineHeight: 76,
-    color: '#58E2D2',
+    ...typography.metricLarge,
+    color: colors.primary,
   },
   unit: {
-    color: '#9CB0C5',
-    fontSize: 14,
-    fontWeight: '700',
+    ...typography.bodyStrong,
+    color: colors.textSecondary,
   },
 });

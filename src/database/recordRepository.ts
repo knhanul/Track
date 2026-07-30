@@ -41,6 +41,50 @@ interface LastPointRow {
   altitude_m: number | null;
 }
 
+interface TodayAggregateRow {
+  record_count: number;
+  total_distance_m: number;
+  total_elapsed_ms: number;
+  total_moving_ms: number;
+  total_rest_ms: number;
+  total_elevation_gain_m: number;
+  pending_sync_count: number;
+}
+
+export interface TodaySummary {
+  dateKey: string;
+  recordCount: number;
+  totalDistanceM: number;
+  totalElapsedMs: number;
+  totalMovingMs: number;
+  totalRestMs: number;
+  totalElevationGainM: number;
+  pendingSyncCount: number;
+  recentRecords: LifeRecordSummary[];
+}
+
+function getLocalDayRange(now: Date): { startMs: number; endMs: number } {
+  const start = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+  const end = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0,
+    0,
+    0,
+    0,
+  );
+  return { startMs: start.getTime(), endMs: end.getTime() };
+}
+
 function rowToMetrics(row: RecordRow, nowMs = Date.now()): LiveMetrics {
   const elapsedMs =
     row.status === 'completed'
@@ -326,6 +370,65 @@ export async function listLifeRecords(limit = 50): Promise<LifeRecordSummary[]> 
     title: row.title,
     endedAtMs: row.ended_at_ms,
   }));
+}
+
+export async function getTodaySummary(
+  now: Date = new Date(),
+): Promise<TodaySummary> {
+  const db = await getDatabase();
+  const { startMs, endMs } = getLocalDayRange(now);
+
+  const aggregate = await db.getFirstAsync<TodayAggregateRow>(
+    `SELECT
+      COUNT(*) AS record_count,
+      COALESCE(SUM(distance_m), 0) AS total_distance_m,
+      COALESCE(SUM(elapsed_ms), 0) AS total_elapsed_ms,
+      COALESCE(SUM(moving_ms), 0) AS total_moving_ms,
+      COALESCE(SUM(rest_ms), 0) AS total_rest_ms,
+      COALESCE(SUM(elevation_gain_m), 0) AS total_elevation_gain_m,
+      COALESCE(SUM(CASE
+        WHEN sync_status IN ('pending', 'syncing', 'failed') THEN 1
+        ELSE 0
+      END), 0) AS pending_sync_count
+     FROM life_records
+     WHERE started_at_ms >= ?
+       AND started_at_ms < ?
+       AND status = 'completed'`,
+    startMs,
+    endMs,
+  );
+
+  const recentRows = await db.getAllAsync<RecordRow>(
+    `SELECT *
+     FROM life_records
+     WHERE started_at_ms >= ?
+       AND started_at_ms < ?
+       AND status = 'completed'
+     ORDER BY started_at_ms DESC
+     LIMIT 5`,
+    startMs,
+    endMs,
+  );
+
+  return {
+    dateKey: [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-'),
+    recordCount: aggregate?.record_count ?? 0,
+    totalDistanceM: aggregate?.total_distance_m ?? 0,
+    totalElapsedMs: aggregate?.total_elapsed_ms ?? 0,
+    totalMovingMs: aggregate?.total_moving_ms ?? 0,
+    totalRestMs: aggregate?.total_rest_ms ?? 0,
+    totalElevationGainM: aggregate?.total_elevation_gain_m ?? 0,
+    pendingSyncCount: aggregate?.pending_sync_count ?? 0,
+    recentRecords: recentRows.map((row) => ({
+      ...rowToMetrics(row, row.ended_at_ms ?? Date.now()),
+      title: row.title,
+      endedAtMs: row.ended_at_ms,
+    })),
+  };
 }
 
 export async function getRecordUploadPayload(recordId: string) {

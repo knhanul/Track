@@ -1,14 +1,18 @@
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
+  View,
   type ViewStyle,
 } from 'react-native';
 
+import { colors, radius, spacing, typography } from '../theme';
+
 interface Props {
   label: string;
+  icon?: ReactNode;
   onPress(): void;
   variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
@@ -18,6 +22,7 @@ interface Props {
 
 export function ActionButton({
   label,
+  icon,
   onPress,
   variant = 'primary',
   disabled = false,
@@ -38,9 +43,12 @@ export function ActionButton({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color="#FFFFFF" />
+        <ActivityIndicator color={colors.textPrimary} />
       ) : (
-        <Text style={styles.text}>{label}</Text>
+        <View style={styles.content}>
+          {icon ? <View style={styles.iconWrap}>{icon}</View> : null}
+          <Text style={styles.text}>{label}</Text>
+        </View>
       )}
     </Pressable>
   );
@@ -48,21 +56,27 @@ export function ActionButton({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 50,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 25,
-    paddingHorizontal: 20,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
   },
-  primary: { backgroundColor: '#0A84FF' },
-  secondary: { backgroundColor: 'rgba(118,118,128,0.24)' },
-  danger: { backgroundColor: '#FF453A' },
+  primary: { backgroundColor: colors.primaryStrong },
+  secondary: { backgroundColor: colors.surfaceElevated },
+  danger: { backgroundColor: colors.danger },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.45 },
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrap: {
+    marginRight: spacing.xs,
+  },
   text: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-    letterSpacing: -0.4,
+    ...typography.bodyStrong,
+    color: colors.textPrimary,
   },
 });

@@ -1,4 +1,4 @@
-import type { TodaySummary } from '../database/recordRepository';
+import type { TodayActivitySummary } from './models';
 import { formatDistance } from './format';
 
 interface TodaySummaryText {
@@ -8,15 +8,15 @@ interface TodaySummaryText {
 
 const ONE_MINUTE_MS = 60 * 1000;
 
-export function buildTodaySummaryText(summary: TodaySummary): TodaySummaryText {
+export function buildTodaySummaryText(summary: TodayActivitySummary): TodaySummaryText {
   if (summary.recordCount === 0) {
     return {
-      primary: '아직 오늘의 움직임이 없어요.',
-      secondary: '첫 기록을 남겨 보세요.',
+      primary: '아직 오늘의 활동 기록이 없어요.',
+      secondary: '첫 야외활동을 기록해 보세요.',
     };
   }
 
-  const primary = `오늘 ${formatDistance(summary.totalDistanceM)}km를 이동했어요.`;
+  const primary = `오늘 ${formatDistance(summary.totalDistanceM)}km를 기록했어요.`;
 
   if (summary.totalMovingMs < ONE_MINUTE_MS) {
     return {
@@ -28,7 +28,7 @@ export function buildTodaySummaryText(summary: TodaySummary): TodaySummaryText {
   const movingText = formatMovingDurationKorean(summary.totalMovingMs);
   return {
     primary,
-    secondary: `${movingText} 동안 움직였어요.`,
+    secondary: `${movingText} 동안 활동했어요.`,
   };
 }
 

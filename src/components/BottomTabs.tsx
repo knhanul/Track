@@ -1,9 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  Activity,
   CalendarDays,
   CircleDot,
-  History,
   UserRound,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -19,14 +19,14 @@ export type TabKey = 'today' | 'history' | 'settings';
 
 interface BottomTabsProps {
   activeTab: TabKey;
-  recordStartActive: boolean;
+  recordActive: boolean;
   onSelectTab(tab: TabKey): void;
   onPressRecord(): void;
 }
 
 export function BottomTabs({
   activeTab,
-  recordStartActive,
+  recordActive,
   onSelectTab,
   onPressRecord,
 }: BottomTabsProps) {
@@ -45,23 +45,23 @@ export function BottomTabs({
       <TabItem
         icon={CalendarDays}
         label="오늘"
-        selected={!recordStartActive && activeTab === 'today'}
+        selected={!recordActive && activeTab === 'today'}
         onPress={() => onSelectTab('today')}
       />
 
-      <RecordAction selected={recordStartActive} onPress={onPressRecord} />
+      <RecordAction active={recordActive} onPress={onPressRecord} />
 
       <TabItem
-        icon={History}
-        label="기억"
-        selected={!recordStartActive && activeTab === 'history'}
+        icon={Activity}
+        label="활동"
+        selected={!recordActive && activeTab === 'history'}
         onPress={() => onSelectTab('history')}
       />
 
       <TabItem
         icon={UserRound}
         label="나"
-        selected={!recordStartActive && activeTab === 'settings'}
+        selected={!recordActive && activeTab === 'settings'}
         onPress={() => onSelectTab('settings')}
       />
     </View>
@@ -93,36 +93,36 @@ function TabItem({ icon: Icon, label, selected, onPress }: TabItemProps) {
 }
 
 interface RecordActionProps {
-  selected: boolean;
+  active: boolean;
   onPress(): void;
 }
 
-function RecordAction({ selected, onPress }: RecordActionProps) {
+function RecordAction({ active, onPress }: RecordActionProps) {
+  const bgColor = active ? colors.primary : colors.surfaceElevated;
+  const iconColor = active ? colors.background : colors.textMuted;
+  const labelColor = active ? colors.primary : colors.textMuted;
+
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.tab, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel="새 일상 기록 시작"
+      accessibilityLabel={active ? '활동 기록 화면 선택됨' : '활동 기록 열기'}
       accessibilityHint="GPS 기록 준비 화면을 엽니다"
-      accessibilityState={{ selected }}
+      accessibilityState={{ selected: active }}
     >
-      <View
-        style={[
-          styles.recordButton,
-          { backgroundColor: selected ? colors.primary : colors.primaryStrong },
-        ]}
-      >
-        <CircleDot size={24} color={colors.background} />
+      <View style={styles.recordButtonWrap}>
+        <View
+          style={[
+            styles.recordButton,
+            { backgroundColor: bgColor },
+            !active && styles.recordButtonInactive,
+          ]}
+        >
+          <CircleDot size={24} color={iconColor} />
+        </View>
       </View>
-      <Text
-        style={[
-          styles.label,
-          { color: selected ? colors.primary : colors.textSecondary },
-        ]}
-      >
-        기록
-      </Text>
+      <Text style={[styles.label, { color: labelColor }]}>기록</Text>
     </Pressable>
   );
 }
@@ -143,6 +143,12 @@ const styles = StyleSheet.create({
     gap: spacing.xxs,
     minHeight: 48,
   },
+  recordButtonWrap: {
+    height: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'visible',
+  },
   recordButton: {
     width: 52,
     height: 52,
@@ -150,6 +156,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     transform: [{ translateY: -RECORD_BUTTON_RAISE }],
+  },
+  recordButtonInactive: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
   },
   label: {
     ...typography.caption,

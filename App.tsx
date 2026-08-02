@@ -9,9 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AuthProvider } from './src/auth/AuthProvider';
+import { useAuth } from './src/auth/useAuth';
 import { BottomTabs, type TabKey } from './src/components/BottomTabs';
 import { initializeDatabase } from './src/database/database';
 import { useRecorder } from './src/features/recording/useRecorder';
+import { configureGoogleAuth } from './src/auth/googleAuth';
 import { RecordStartScreen } from './src/screens/RecordStartScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { RecordingScreen } from './src/screens/RecordingScreen';
@@ -23,12 +26,15 @@ import { colors, spacing, typography } from './src/theme';
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppContent />
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }
 
 function AppContent() {
+  const auth = useAuth();
   const [ready, setReady] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [recordStartOpen, setRecordStartOpen] = useState(false);
@@ -40,13 +46,15 @@ function AppContent() {
 
     void (async () => {
       await initializeDatabase();
+      configureGoogleAuth();
+      await auth.initialize();
       await recorder.restore();
       unsubscribe = startNetworkSyncListener();
       setReady(true);
     })();
 
     return () => unsubscribe?.();
-  }, []);
+  }, [auth, recorder]);
 
   useEffect(() => {
     if (!recordStartOpen || recorder.activeRecordId) {
@@ -101,6 +109,7 @@ function AppContent() {
           <TodayScreen
             recorder={recorder}
             onOpenRecord={handleOpenRecord}
+            onSelectTab={handleSelectTab}
             refreshSignal={todayRefreshSignal}
           />
         );
@@ -108,6 +117,7 @@ function AppContent() {
   }, [
     activeTab,
     handleRecordingCompleted,
+    handleSelectTab,
     recordStartOpen,
     recorder,
     todayRefreshSignal,
@@ -130,7 +140,7 @@ function AppContent() {
       {!recorder.activeRecordId && (
         <BottomTabs
           activeTab={activeTab}
-          recordStartActive={recordStartOpen}
+          recordActive={recordStartOpen}
           onSelectTab={handleSelectTab}
           onPressRecord={handleOpenRecord}
         />

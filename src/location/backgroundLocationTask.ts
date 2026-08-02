@@ -3,7 +3,7 @@ import * as TaskManager from 'expo-task-manager';
 
 import { appendLocationBatch, getActiveRecordId } from '../database/recordRepository';
 
-export const LOCATION_TASK_NAME = 'nuni-life-background-location';
+export const LOCATION_TASK_NAME = 'nuni-track-background-location';
 
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error) {

@@ -1,5 +1,7 @@
 import * as Network from 'expo-network';
 
+import { apiFetch, API_BASE_URL } from '../api/apiClient';
+import type { AuthStatus } from '../auth/types';
 import {
   completeSyncQueueItem,
   failSyncQueueItem,
@@ -8,13 +10,11 @@ import {
   markSyncState,
 } from '../database/recordRepository';
 
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ?? '';
-
 let syncing = false;
+let authStatus: AuthStatus = 'signed_out';
 
 async function uploadPendingRecords(): Promise<void> {
-  if (syncing || !API_BASE_URL) return;
+  if (syncing || !API_BASE_URL || authStatus !== 'signed_in') return;
   syncing = true;
 
   try {
@@ -34,14 +34,14 @@ async function uploadPendingRecords(): Promise<void> {
 
         await markSyncState(queueItem.entity_id, 'syncing');
 
-        const response = await fetch(`${API_BASE_URL}/v1/life-records`, {
+        const response = await apiFetch('/v1/life-records', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Idempotency-Key': queueItem.entity_id,
           },
           body: JSON.stringify(payload),
-        });
+        }, { auth: true });
 
         if (!response.ok) {
           throw new Error(`API ${response.status}: ${await response.text()}`);
@@ -71,4 +71,15 @@ export function startNetworkSyncListener(): () => void {
   });
 
   return () => subscription.remove();
+}
+
+export function setSyncAuthStatus(status: AuthStatus): void {
+  authStatus = status;
+  if (status === 'signed_in') {
+    void uploadPendingRecords();
+  }
+}
+
+export function triggerSyncNow(): void {
+  void uploadPendingRecords();
 }

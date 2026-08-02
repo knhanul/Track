@@ -12,7 +12,11 @@ interface SyncStatusBadgeProps {
 
 export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProps) {
   return (
-    <Text style={[styles.base, compact && styles.compact, { color: getStatusColor(status) }]}>
+    <Text
+      numberOfLines={1}
+      ellipsizeMode="clip"
+      style={[styles.base, compact && styles.compact, { color: getStatusColor(status) }]}
+    >
       {formatSyncStatus(status)}
     </Text>
   );
@@ -40,6 +44,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   compact: {
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
   },
 });

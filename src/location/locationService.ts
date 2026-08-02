@@ -64,8 +64,8 @@ export async function startBackgroundTracking(): Promise<void> {
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
-      notificationTitle: 'nuni life 기록 중',
-      notificationBody: '일상의 이동 경로를 기기에 안전하게 저장하고 있어요.',
+      notificationTitle: 'nuni track 활동 기록 중',
+      notificationBody: '야외활동의 이동 경로를 기기에 안전하게 저장하고 있어요.',
       notificationColor: '#2DD4BF',
     },
   });

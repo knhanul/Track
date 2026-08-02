@@ -73,7 +73,7 @@ function getStatusMeta(status: LocationReadinessStatus): StatusMeta {
       return {
         title: 'GPS 준비 완료',
         primaryText: '',
-        helperText: '화면이 꺼져도 계속 기록할 수 있어요.',
+        helperText: '화면이 꺼져도 진행 중인 야외활동을 계속 기록할 수 있어요.',
         color: colors.primary,
         icon: CircleCheck,
         showAccuracy: true,
@@ -81,7 +81,7 @@ function getStatusMeta(status: LocationReadinessStatus): StatusMeta {
     case 'permission_required':
       return {
         title: '위치 권한이 필요해요',
-        primaryText: '현재 위치를 기록하려면 위치 권한을 허용해 주세요.',
+        primaryText: '야외활동의 경로와 속도를 기록하려면 위치 권한을 허용해 주세요.',
         helperText: '권한을 허용하기 전에는 기록을 시작하지 않습니다.',
         color: colors.warning,
         icon: ShieldAlert,
@@ -90,7 +90,7 @@ function getStatusMeta(status: LocationReadinessStatus): StatusMeta {
     case 'background_permission_required':
       return {
         title: '백그라운드 권한이 필요해요',
-        primaryText: '화면이 꺼진 상태에서도 경로를 계속 기록할 수 있어야 해요.',
+        primaryText: '화면이 꺼진 상태에서도 진행 중인 야외활동 경로를 계속 기록할 수 있어야 해요.',
         helperText: '위치 권한을 항상 허용으로 설정해 주세요.',
         color: colors.warning,
         icon: ShieldAlert,
@@ -100,7 +100,7 @@ function getStatusMeta(status: LocationReadinessStatus): StatusMeta {
       return {
         title: '위치 서비스가 꺼져 있어요',
         primaryText: '스마트폰의 위치 서비스를 켜 주세요.',
-        helperText: '위치 서비스가 켜져야 GPS 기록을 시작할 수 있어요.',
+        helperText: '위치 서비스가 켜져야 야외활동 GPS 기록을 시작할 수 있어요.',
         color: colors.danger,
         icon: MapPinOff,
         showAccuracy: false,
@@ -109,8 +109,17 @@ function getStatusMeta(status: LocationReadinessStatus): StatusMeta {
       return {
         title: 'GPS 정확도가 낮아요',
         primaryText: '',
-        helperText: '하늘이 잘 보이는 곳에서 잠시 기다린 뒤 다시 확인해 주세요.',
+        helperText: '지금 시작하면 경로의 시작 부분이 부정확할 수 있어요. GPS가 안정될 때까지 거리와 속도 계산을 보류합니다.',
         color: colors.warning,
+        icon: CircleAlert,
+        showAccuracy: true,
+      };
+    case 'very_low_accuracy':
+      return {
+        title: 'GPS 신호가 매우 약해요',
+        primaryText: '',
+        helperText: '지금 시작할 수는 있지만 경로의 시작 부분이 정확하지 않을 수 있어요. GPS가 안정될 때까지 거리와 속도 계산을 보류합니다.',
+        color: colors.danger,
         icon: CircleAlert,
         showAccuracy: true,
       };
@@ -133,6 +142,10 @@ function buildAccessibilityLabel(status: LocationReadinessStatus, accuracyM: num
       return `GPS 준비 완료, 현재 위치 정확도 ${accuracyM}미터`;
     case 'low_accuracy':
       return `GPS 정확도가 낮아요, 현재 위치 정확도 ${accuracyM}미터`;
+    case 'very_low_accuracy':
+      return accuracyM > 0
+        ? `GPS 신호가 매우 약해요, 현재 위치 정확도 ${accuracyM}미터`
+        : 'GPS 신호가 매우 약해요, 현재 위치 정확도를 확인할 수 없어요';
     case 'permission_required':
       return '위치 권한이 필요해요';
     case 'background_permission_required':

@@ -1,31 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppState,
+  Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { CloudUpload, Route } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionButton } from '../components/ActionButton';
-import { SyncStatusBadge } from '../components/SyncStatusBadge';
-import { ScreenContainer } from '../components/layout/ScreenContainer';
+import type { TabKey } from '../components/BottomTabs';
 import { getTodaySummary, type TodaySummary } from '../database/recordRepository';
+import { formatKoreanLocalDate } from '../domain/format';
+import type { ActivityRecordSummary, RecorderController } from '../domain/models';
+import { TodayHeroSummaryCard } from '../features/today/components/TodayHeroSummaryCard';
+import { TodayCompactMetrics } from '../features/today/components/TodayCompactMetrics';
+import { TodaySyncStatusRow } from '../features/today/components/TodaySyncStatusRow';
 import {
-  formatDistance,
-  formatDuration,
-  formatElevation,
-  formatKoreanLocalDate,
-  formatLocalTime,
-} from '../domain/format';
-import { buildTodaySummaryText } from '../domain/todaySummaryText';
-import type { RecorderController } from '../domain/models';
-import { colors, radius, spacing, typography } from '../theme';
+  TodayRecentActivityRow,
+  TodayRecentActivityEmpty,
+} from '../features/today/components/TodayRecentActivityRow';
+import { BOTTOM_TAB_BASE_HEIGHT } from '../constants/layout';
+import { colors, spacing, typography } from '../theme';
 
 interface Props {
   recorder: RecorderController;
   onOpenRecord(): void;
+  onSelectTab(tab: TabKey): void;
   refreshSignal?: number;
 }
 
@@ -41,7 +44,12 @@ const EMPTY_SUMMARY: TodaySummary = {
   recentRecords: [],
 };
 
-export function TodayScreen({ onOpenRecord, refreshSignal = 0 }: Props) {
+const CTA_HEIGHT = 56;
+const CTA_MARGIN_TOP = spacing.md;
+const CTA_MARGIN_BOTTOM = spacing.sm;
+
+export function TodayScreen({ onOpenRecord, onSelectTab, refreshSignal = 0 }: Props) {
+  const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<TodaySummary>(EMPTY_SUMMARY);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -63,7 +71,14 @@ export function TodayScreen({ onOpenRecord, refreshSignal = 0 }: Props) {
   }, [loadSummary]);
 
   const dateText = useMemo(() => formatKoreanLocalDate(new Date()), [summary.dateKey]);
-  const summaryText = useMemo(() => buildTodaySummaryText(summary), [summary]);
+
+  const latestRecord = useMemo<ActivityRecordSummary | null>(() => {
+    if (summary.recentRecords.length === 0) return null;
+    const sorted = [...summary.recentRecords].sort((a, b) => b.startedAtMs - a.startedAtMs);
+    return sorted[0] ?? null;
+  }, [summary.recentRecords]);
+
+  const remainingCount = summary.recordCount > 1 ? summary.recordCount - 1 : 0;
 
   async function refresh() {
     setRefreshing(true);
@@ -74,128 +89,95 @@ export function TodayScreen({ onOpenRecord, refreshSignal = 0 }: Props) {
     }
   }
 
-  const pendingSyncText =
-    summary.pendingSyncCount === 1
-      ? '클라우드 업로드를 기다리는 기록이 1개 있어요.'
-      : `클라우드 업로드를 기다리는 기록이 ${summary.pendingSyncCount}개 있어요.`;
+  const scrollPaddingBottom =
+    CTA_HEIGHT + CTA_MARGIN_TOP + CTA_MARGIN_BOTTOM +
+    BOTTOM_TAB_BASE_HEIGHT + insets.bottom + spacing.sm;
 
   return (
-    <ScreenContainer
-      scrollable
-      contentStyle={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
-      }
-    >
-      <Text style={styles.date}>{dateText}</Text>
-      <Text style={styles.title}>오늘의 움직임</Text>
+    <View style={styles.root}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + spacing.md, paddingBottom: scrollPaddingBottom },
+        ]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
+        }
+      >
+        <Text style={styles.date}>{dateText}</Text>
+        <Text style={styles.title}>오늘의 활동</Text>
+
+        <TodayHeroSummaryCard
+          distanceM={summary.totalDistanceM}
+          activityCount={summary.recordCount}
+          movingMs={summary.totalMovingMs}
+          elevationGainM={summary.totalElevationGainM}
+        />
+
+        <TodayCompactMetrics
+          movingMs={summary.totalMovingMs}
+          restMs={summary.totalRestMs}
+          elevationGainM={summary.totalElevationGainM}
+        />
+
+        <TodaySyncStatusRow pendingSyncCount={summary.pendingSyncCount} />
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>최근 활동</Text>
+          <View style={styles.sectionRight}>
+            {summary.recordCount > 0 ? (
+              <Pressable
+                onPress={() => onSelectTab('history')}
+                accessibilityRole="button"
+                accessibilityLabel="전체 보기, 활동 탭으로 이동"
+              >
+                <Text style={styles.viewAllText}>전체 보기</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        {latestRecord ? (
+          <>
+            <TodayRecentActivityRow
+              record={latestRecord}
+              onPress={() => onSelectTab('history')}
+            />
+            {remainingCount > 0 ? (
+              <Text style={styles.remainingText}>
+                외 {remainingCount}개의 활동 기록이 있어요.
+              </Text>
+            ) : null}
+          </>
+        ) : (
+          <TodayRecentActivityEmpty />
+        )}
+      </ScrollView>
 
       <View
-        style={styles.heroCard}
-        accessibilityLabel={`오늘 이동 거리 ${formatDistance(summary.totalDistanceM)}킬로미터`}
+        style={[
+          styles.ctaContainer,
+          { bottom: BOTTOM_TAB_BASE_HEIGHT + insets.bottom },
+        ]}
       >
-        <Text style={styles.heroLabel}>오늘의 이동</Text>
-
-        <View style={styles.heroMetricRow}>
-          <Text style={styles.heroDistance}>{formatDistance(summary.totalDistanceM)}</Text>
-          <Text style={styles.heroUnit}>km</Text>
-        </View>
-
-        <Text style={styles.summaryPrimary}>{summaryText.primary}</Text>
-        {summaryText.secondary ? (
-          <Text style={styles.summarySecondary}>{summaryText.secondary}</Text>
-        ) : null}
-      </View>
-
-      <View style={styles.metricGrid}>
-        <MetricCard
-          label="움직인 시간"
-          value={formatDuration(summary.totalMovingMs)}
-          accessibilityLabel={`움직인 시간 ${formatDuration(summary.totalMovingMs)}`}
-        />
-        <MetricCard
-          label="머문 시간"
-          value={formatDuration(summary.totalRestMs)}
-          accessibilityLabel={`머문 시간 ${formatDuration(summary.totalRestMs)}`}
-        />
-        <MetricCard
-          label="올라간 높이"
-          value={`${formatElevation(summary.totalElevationGainM)}m`}
-          accessibilityLabel={`올라간 높이 ${formatElevation(summary.totalElevationGainM)}미터`}
-        />
-        <MetricCard
-          label="오늘 기록"
-          value={`${summary.recordCount}개`}
-          accessibilityLabel={`오늘 기록 ${summary.recordCount}개`}
+        <ActionButton
+          label="활동 기록 시작"
+          onPress={onOpenRecord}
+          style={styles.ctaButton}
         />
       </View>
-
-      {summary.pendingSyncCount > 0 ? (
-        <View style={styles.pendingBanner}>
-          <CloudUpload size={18} color={colors.primary} />
-          <Text style={styles.pendingText}>{pendingSyncText}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>오늘의 기록</Text>
-        <Text style={styles.sectionCount}>{summary.recordCount}개</Text>
-      </View>
-
-      {summary.recentRecords.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Route size={24} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>아직 오늘의 기록이 없습니다.</Text>
-          <Text style={styles.emptyText}>기록 버튼을 눌러 첫 움직임을 남겨 보세요.</Text>
-        </View>
-      ) : (
-        summary.recentRecords.map((record) => (
-          <View key={record.recordId} style={styles.recordCard}>
-            <View style={styles.recordHeader}>
-              <Text numberOfLines={1} style={styles.recordTitle}>
-                {record.title}
-              </Text>
-              <SyncStatusBadge status={record.syncStatus} compact />
-            </View>
-
-            <Text style={styles.recordTime}>{formatLocalTime(record.startedAtMs)}</Text>
-
-            <View style={styles.recordMetrics}>
-              <Text style={styles.metricText}>{formatDistance(record.distanceM)}km</Text>
-              <Text style={styles.metricText}>{formatDuration(record.elapsedMs)}</Text>
-              <Text style={styles.metricText}>상승 {formatElevation(record.elevationGainM)}m</Text>
-            </View>
-          </View>
-        ))
-      )}
-
-      <ActionButton
-        label="일상 기록 시작"
-        onPress={onOpenRecord}
-        style={styles.startButton}
-      />
-    </ScreenContainer>
-  );
-}
-
-interface MetricCardProps {
-  label: string;
-  value: string;
-  accessibilityLabel: string;
-}
-
-function MetricCard({ label, value, accessibilityLabel }: MetricCardProps) {
-  return (
-    <View style={styles.metricCard} accessibilityLabel={accessibilityLabel}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: spacing.lg,
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
   date: {
     ...typography.caption,
@@ -203,158 +185,48 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   title: {
-    ...typography.screenTitle,
+    ...typography.sectionTitle,
+    fontSize: 24,
+    lineHeight: 32,
     color: colors.textPrimary,
     marginTop: spacing.xxs,
-  },
-  heroCard: {
-    marginTop: spacing.xs,
-    borderRadius: radius.xl,
-    backgroundColor: colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.xl,
-  },
-  heroLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  heroMetricRow: {
-    marginTop: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.xs,
-  },
-  heroDistance: {
-    ...typography.metricHero,
-    color: colors.textPrimary,
-    fontVariant: ['tabular-nums'],
-  },
-  heroUnit: {
-    ...typography.bodyStrong,
-    color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
-  summaryPrimary: {
-    ...typography.bodyStrong,
-    color: colors.textPrimary,
-    marginTop: spacing.sm,
-  },
-  summarySecondary: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginTop: spacing.xxs,
-  },
-  metricGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  metricCard: {
-    flexGrow: 1,
-    flexBasis: '47%',
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    minHeight: 90,
-  },
-  metricLabel: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  metricValue: {
-    ...typography.metricMedium,
-    color: colors.textPrimary,
-    marginTop: spacing.xxs,
-    fontVariant: ['tabular-nums'],
-  },
-  pendingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderRadius: radius.lg,
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  pendingText: {
-    ...typography.caption,
-    color: colors.textPrimary,
-    flex: 1,
-  },
   sectionHeader: {
-    marginTop: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.sm,
+    marginTop: spacing.xs,
   },
   sectionTitle: {
-    ...typography.sectionTitle,
+    ...typography.bodyStrong,
+    fontSize: 16,
     color: colors.textPrimary,
   },
-  sectionCount: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  emptyCard: {
-    borderRadius: radius.xl,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.xxl,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  emptyTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-    textAlign: 'center',
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  recordCard: {
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.xxs,
-  },
-  recordHeader: {
+  sectionRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  recordTitle: {
-    ...typography.bodyStrong,
-    color: colors.textPrimary,
-    flex: 1,
-    flexShrink: 1,
+  viewAllText: {
+    ...typography.caption,
+    color: colors.primary,
   },
-  recordTime: {
+  remainingText: {
     ...typography.caption,
     color: colors.textMuted,
+    marginTop: spacing.xxs,
+    marginLeft: spacing.xxs,
   },
-  recordMetrics: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+  ctaContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    backgroundColor: colors.background,
   },
-  metricText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  startButton: {
-    marginTop: spacing.sm,
+  ctaButton: {
+    minHeight: CTA_HEIGHT,
   },
 });

@@ -16,9 +16,11 @@ export type LocationReadinessStatus =
   | 'background_permission_required'
   | 'location_service_disabled'
   | 'low_accuracy'
+  | 'very_low_accuracy'
   | 'error';
 
-const READY_ACCURACY_M = 30;
+const GOOD_ACCURACY_THRESHOLD_M = 30;
+const LOW_ACCURACY_THRESHOLD_M = 100;
 
 interface LocationReadinessState {
   status: LocationReadinessStatus;
@@ -40,13 +42,17 @@ function buildMessage(status: LocationReadinessStatus, accuracyM: number | null)
     case 'ready':
       return `현재 위치 정확도 ${Math.round(accuracyM ?? 0)}m`;
     case 'permission_required':
-      return '일상 이동을 기록하려면 위치 권한을 허용해 주세요.';
+      return '야외활동의 경로와 속도를 기록하려면 위치 권한을 허용해 주세요.';
     case 'background_permission_required':
-      return '화면이 꺼져도 계속 기록할 수 있도록 항상 허용해 주세요.';
+      return '화면이 꺼져도 진행 중인 야외활동 경로를 계속 기록할 수 있도록 항상 허용해 주세요.';
     case 'location_service_disabled':
       return '스마트폰의 위치 서비스를 켜 주세요.';
     case 'low_accuracy':
       return `현재 정확도 ${Math.round(accuracyM ?? 0)}m · 조금 더 기다려 주세요.`;
+    case 'very_low_accuracy':
+      return accuracyM != null
+        ? `현재 정확도 ${Math.round(accuracyM)}m · GPS 신호가 매우 약해요.`
+        : '현재 위치 정확도를 확인할 수 없어요.';
     case 'error':
     default:
       return '잠시 후 다시 시도해 주세요.';
@@ -92,10 +98,12 @@ export function useLocationReadiness(): LocationReadinessController {
       }
 
       setAccuracyM(currentAccuracy);
-      if (currentAccuracy <= READY_ACCURACY_M) {
+      if (currentAccuracy <= GOOD_ACCURACY_THRESHOLD_M) {
         setStatus('ready');
-      } else {
+      } else if (currentAccuracy <= LOW_ACCURACY_THRESHOLD_M) {
         setStatus('low_accuracy');
+      } else {
+        setStatus('very_low_accuracy');
       }
     } catch {
       setAccuracyM(null);

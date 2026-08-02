@@ -1,22 +1,23 @@
 {
   "expo": {
-    "name": "nuni life",
-    "slug": "nuni-life-native",
+    "name": "nuni track",
+    "slug": "nuni-track",
+    "scheme": "nunitrack",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "platforms": ["android", "ios"],
     "ios": {
-      "bundleIdentifier": "kr.co.nuni.life",
+      "bundleIdentifier": "kr.co.nuni.track",
       "supportsTablet": false,
       "infoPlist": {
         "UIBackgroundModes": ["location"],
-        "NSLocationWhenInUseUsageDescription": "일상 이동 기록과 실시간 속도 표시를 위해 위치 정보가 필요합니다.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "화면이 꺼진 상태에서도 일상 이동 경로를 안전하게 기록하기 위해 위치 정보가 필요합니다."
+        "NSLocationWhenInUseUsageDescription": "야외활동의 경로, 거리와 속도를 기록하기 위해 위치 정보가 필요합니다.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "화면이 꺼진 상태에서도 진행 중인 야외활동 경로를 계속 기록하기 위해 위치 정보가 필요합니다."
       }
     },
     "android": {
-      "package": "kr.co.nuni.life",
+      "package": "kr.co.nuni.track",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -30,14 +31,21 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "일상 이동 기록과 실시간 속도 표시를 위해 위치 정보가 필요합니다.",
-          "locationAlwaysAndWhenInUsePermission": "화면이 꺼진 상태에서도 일상 이동 경로를 안전하게 기록하기 위해 위치 정보가 필요합니다.",
+          "locationWhenInUsePermission": "야외활동의 경로, 거리와 속도를 기록하기 위해 위치 정보가 필요합니다.",
+          "locationAlwaysAndWhenInUsePermission": "화면이 꺼진 상태에서도 진행 중인 야외활동 경로를 계속 기록하기 위해 위치 정보가 필요합니다.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "react-native-nitro-google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.199651041375-2n6bfjj3up0pc5hi0aa7nb0254942m31"
+        }
+      ]
     ],
     "extra": {
       "apiBaseUrl": ""

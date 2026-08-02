@@ -1,28 +1,74 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 
 import { ScreenContainer } from '../components/layout/ScreenContainer';
-import { listLifeRecords } from '../database/recordRepository';
+import { listActivityRecords } from '../database/recordRepository';
+import { groupRecordsByLocalDate } from '../domain/historyGrouping';
+import type { ActivityRecordSummary } from '../domain/models';
+import { ActivityPeriodSelector } from '../features/history/components/ActivityPeriodSelector';
+import { ActivityPeriodSummaryCard } from '../features/history/components/ActivityPeriodSummaryCard';
+import { ActivityTypeFilter } from '../features/history/components/ActivityTypeFilter';
+import { HistoryEmptyState } from '../features/history/components/HistoryEmptyState';
+import { HistoryRecordCard } from '../features/history/components/HistoryRecordCard';
 import {
-  formatDistance,
-  formatDuration,
-  formatElevation,
-  formatSyncStatus,
-} from '../domain/format';
-import type { LifeRecordSummary } from '../domain/models';
-import { colors, radius, spacing, typography } from '../theme';
+  type ActivityHistoryPeriod,
+  filterRecordsByPeriod,
+} from '../features/history/historyPeriod';
+import {
+  type ActivityHistoryTypeFilter,
+  filterRecordsByActivityType,
+  hasUnknownRecords,
+  summarizeActivityRecords,
+} from '../features/history/historySummary';
+import { colors, spacing, typography } from '../theme';
+
+interface HistorySection {
+  dateKey: string;
+  label: string;
+  count: number;
+  data: ActivityRecordSummary[];
+}
 
 export function HistoryScreen() {
-  const [records, setRecords] = useState<LifeRecordSummary[]>([]);
+  const [allRecords, setAllRecords] = useState<ActivityRecordSummary[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState<ActivityHistoryPeriod>('week');
+  const [selectedType, setSelectedType] = useState<ActivityHistoryTypeFilter>('all');
+
+  const showUnknownFilter = useMemo(() => hasUnknownRecords(allRecords), [allRecords]);
+
+  const periodRecords = useMemo(
+    () => filterRecordsByPeriod(allRecords, selectedPeriod),
+    [allRecords, selectedPeriod],
+  );
+
+  const filteredRecords = useMemo(
+    () => filterRecordsByActivityType(periodRecords, selectedType),
+    [periodRecords, selectedType],
+  );
+
+  const summary = useMemo(
+    () => summarizeActivityRecords(filteredRecords),
+    [filteredRecords],
+  );
+
+  const sections = useMemo<HistorySection[]>(() => {
+    return groupRecordsByLocalDate(filteredRecords).map((group) => ({
+      dateKey: group.dateKey,
+      label: group.label,
+      count: group.records.length,
+      data: group.records,
+    }));
+  }, [filteredRecords]);
 
   const load = useCallback(async () => {
-    setRecords(await listLifeRecords());
+    setAllRecords(await listActivityRecords());
   }, []);
 
   useEffect(() => {
@@ -35,126 +81,134 @@ export function HistoryScreen() {
     setRefreshing(false);
   }
 
-  return (
-    <ScreenContainer
-      scrollable
-      contentStyle={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
-      }
-    >
-      <Text style={styles.eyebrow}>MEMORY</Text>
-      <Text style={styles.title}>나의 기록</Text>
-      <Text style={styles.description}>
-        산책이나 라이딩 같은 종목보다, 그날의 이동과 시간을 중심으로 봅니다.
-      </Text>
+  const listHeader = (
+    <View style={styles.screenHeaderWrap}>
+      <View style={styles.screenHeaderRow}>
+        <Text style={styles.title}>활동 기록</Text>
+        <Text style={styles.totalCount}>{allRecords.length}개</Text>
+      </View>
+      <Text style={styles.description}>자전거, 산책, 러닝과 등산 기록을 날짜별로 확인해요.</Text>
 
-      {records.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyTitle}>아직 기록이 없습니다.</Text>
-          <Text style={styles.emptyText}>첫 일상 기록을 시작해 보세요.</Text>
-        </View>
-      ) : (
-        records.map((record) => (
-          <View key={record.recordId} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleWrap}>
-                <Text style={styles.cardTitle}>{record.title}</Text>
-                <Text style={styles.date}>
-                  {new Date(record.startedAtMs).toLocaleString('ko-KR')}
-                </Text>
-              </View>
-              <Text style={styles.sync}>
-                {formatSyncStatus(record.syncStatus)}
-              </Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.metric}>
-                {formatDistance(record.distanceM)}km
-              </Text>
-              <Text style={styles.metric}>{formatDuration(record.elapsedMs)}</Text>
-              <Text style={styles.metric}>
-                상승 {formatElevation(record.elevationGainM)}m
-              </Text>
-            </View>
+      <View style={styles.periodSelectorWrap}>
+        <ActivityPeriodSelector value={selectedPeriod} onChange={setSelectedPeriod} />
+      </View>
+
+      <View style={styles.summaryCardWrap}>
+        <ActivityPeriodSummaryCard
+          activityCount={summary.activityCount}
+          totalDistanceM={summary.totalDistanceM}
+          totalMovingMs={summary.totalMovingMs}
+          totalElevationGainM={summary.totalElevationGainM}
+        />
+      </View>
+
+      <View style={styles.typeFilterWrap}>
+        <ActivityTypeFilter
+          value={selectedType}
+          onChange={setSelectedType}
+          showUnknown={showUnknownFilter}
+        />
+      </View>
+    </View>
+  );
+
+  return (
+    <ScreenContainer includeBottomTabSpace>
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.recordId}
+        stickySectionHeadersEnabled={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />
+        }
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={
+          <View style={styles.emptyWrap}>
+            <HistoryEmptyState hasRecords={allRecords.length > 0} />
           </View>
-        ))
-      )}
+        }
+        renderSectionHeader={({ section }) => (
+          <View
+            style={styles.groupHeader}
+            accessibilityLabel={`${section.label}, 활동 ${section.count}개`}
+          >
+            <Text style={styles.groupTitle}>{section.label}</Text>
+            <Text style={styles.groupCount}>{section.count}개</Text>
+          </View>
+        )}
+        renderItem={({ item }) => <HistoryRecordCard record={item} />}
+        SectionSeparatorComponent={() => <View style={styles.groupSeparator} />}
+        ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
+        contentContainerStyle={[styles.listContent, filteredRecords.length === 0 && styles.listContentEmpty]}
+        showsVerticalScrollIndicator={false}
+      />
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {},
-  eyebrow: {
-    ...typography.caption,
-    color: colors.primary,
-    letterSpacing: 2,
+  listContent: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  listContentEmpty: {
+    flexGrow: 1,
+  },
+  screenHeaderWrap: {
+    marginBottom: spacing.lg,
+  },
+  periodSelectorWrap: {
+    marginTop: spacing.md,
+  },
+  summaryCardWrap: {
     marginTop: spacing.sm,
+  },
+  typeFilterWrap: {
+    marginTop: spacing.md,
+  },
+  screenHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
   title: {
     ...typography.screenTitle,
     color: colors.textPrimary,
-    marginTop: spacing.sm,
+    flexShrink: 1,
+  },
+  totalCount: {
+    ...typography.bodyStrong,
+    color: colors.textSecondary,
   },
   description: {
     ...typography.body,
     color: colors.textSecondary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  empty: {
-    padding: spacing.xl,
-    borderRadius: radius.xl,
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emptyTitle: {
-    ...typography.cardTitle,
-    color: colors.textPrimary,
-  },
-  emptyText: {
-    ...typography.caption,
-    color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-  card: {
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+  emptyWrap: {
+    flex: 1,
+    justifyContent: 'center',
   },
-  cardHeader: {
+  groupHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  cardTitleWrap: { flex: 1 },
-  cardTitle: {
-    ...typography.cardTitle,
+  groupTitle: {
+    ...typography.sectionTitle,
     color: colors.textPrimary,
+    flexShrink: 1,
   },
-  date: {
-    ...typography.caption,
-    color: colors.textMuted,
-    marginTop: spacing.xxs,
-  },
-  sync: {
-    ...typography.caption,
-    color: colors.primary,
-  },
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.md,
-  },
-  metric: {
+  groupCount: {
     ...typography.caption,
     color: colors.textSecondary,
+  },
+  groupSeparator: {
+    height: spacing.xl,
+  },
+  cardSeparator: {
+    height: spacing.sm,
   },
 });

@@ -17,6 +17,7 @@ export async function initializeDatabase(): Promise<void> {
     CREATE TABLE IF NOT EXISTS life_records (
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
+      activity_type TEXT NOT NULL DEFAULT 'unknown',
       status TEXT NOT NULL,
       started_at_ms INTEGER NOT NULL,
       ended_at_ms INTEGER,
@@ -68,4 +69,19 @@ export async function initializeDatabase(): Promise<void> {
       value TEXT
     );
   `);
+
+  const lifeRecordsColumns = await db.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(life_records)`
+  );
+  const hasActivityType = lifeRecordsColumns.some((column) => column.name === 'activity_type');
+
+  if (!hasActivityType) {
+    await db.execAsync(`ALTER TABLE life_records ADD COLUMN activity_type TEXT NOT NULL DEFAULT 'unknown';`);
+  }
+
+  const hasRecordingGpsState = lifeRecordsColumns.some((column) => column.name === 'recording_gps_state');
+
+  if (!hasRecordingGpsState) {
+    await db.execAsync(`ALTER TABLE life_records ADD COLUMN recording_gps_state TEXT NOT NULL DEFAULT 'recording_normally';`);
+  }
 }

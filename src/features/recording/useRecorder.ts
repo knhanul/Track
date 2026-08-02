@@ -8,6 +8,8 @@ import {
   updateRecordStatus,
 } from '../../database/recordRepository';
 import type { LiveMetrics, RecorderController } from '../../domain/models';
+import type { SelectableActivityType } from '../../domain/activityType';
+import type { RecordingGpsState } from '../../location/gpsQuality';
 import {
   ensureTrackingReadyPermissions,
   startBackgroundTracking,
@@ -22,7 +24,11 @@ export function useRecorder(): RecorderController {
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async (recordId: string) => {
-    setMetrics(await getLiveMetrics(recordId));
+    try {
+      setMetrics(await getLiveMetrics(recordId));
+    } catch {
+      // Database may be temporarily locked by background write; skip this tick
+    }
   }, []);
 
   useEffect(() => {
@@ -59,10 +65,13 @@ export function useRecorder(): RecorderController {
     await refresh(id);
   }, [refresh]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (
+    activityType: SelectableActivityType,
+    initialGpsState: RecordingGpsState = 'recording_normally',
+  ) => {
     await run(async () => {
       await ensureTrackingReadyPermissions();
-      const id = await createLifeRecord();
+      const id = await createLifeRecord(activityType, initialGpsState);
       setActiveRecordId(id);
       await startBackgroundTracking();
       await refresh(id);

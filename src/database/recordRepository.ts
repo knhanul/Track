@@ -2,22 +2,29 @@ import * as Crypto from 'expo-crypto';
 import type { LocationObject } from 'expo-location';
 
 import { calculateSpeedKph, haversineDistanceM, sanitizeNumber } from '../domain/geo';
+import { formatActivityType, isSelectableActivityType } from '../domain/activityType';
 import type {
-  LifeRecordSummary,
+  ActivityRecordSummary,
   LiveMetrics,
   RecordStatus,
   SyncStatus,
+  TodayActivitySummary,
 } from '../domain/models';
+import type { RecordingGpsState } from '../location/gpsQuality';
+import {
+  type TrackPoint,
+  validateGpsPointForMetrics,
+} from '../location/gpsPointValidation';
 import { getDatabase } from './database';
 
 const ACTIVE_RECORD_KEY = 'active_record_id';
-const MAX_ACCEPTED_ACCURACY_M = 80;
-const MAX_REASONABLE_SPEED_KPH = 180;
+const LAST_ACTIVITY_TYPE_KEY = 'last_activity_type';
 const MOVING_THRESHOLD_KPH = 1;
 
 interface RecordRow {
   id: string;
   title: string;
+  activity_type: string;
   status: RecordStatus;
   started_at_ms: number;
   ended_at_ms: number | null;
@@ -31,7 +38,11 @@ interface RecordRow {
   elevation_gain_m: number;
   point_count: number;
   sync_status: SyncStatus;
+  recording_gps_state: string;
 }
+
+export type LifeRecordSummary = ActivityRecordSummary;
+export type TodaySummary = TodayActivitySummary;
 
 interface LastPointRow {
   sequence_no: number;
@@ -51,16 +62,24 @@ interface TodayAggregateRow {
   pending_sync_count: number;
 }
 
-export interface TodaySummary {
-  dateKey: string;
-  recordCount: number;
-  totalDistanceM: number;
-  totalElapsedMs: number;
-  totalMovingMs: number;
-  totalRestMs: number;
-  totalElevationGainM: number;
-  pendingSyncCount: number;
-  recentRecords: LifeRecordSummary[];
+function normalizeActivityType(value: string | null | undefined) {
+  if (
+    value === 'cycling' ||
+    value === 'walking' ||
+    value === 'running' ||
+    value === 'hiking' ||
+    value === 'trail_running' ||
+    value === 'unknown'
+  ) {
+    return value;
+  }
+
+  return 'unknown';
+}
+
+function normalizeSelectableActivityType(value: string | null | undefined) {
+  const normalized = normalizeActivityType(value);
+  return isSelectableActivityType(normalized) ? normalized : null;
 }
 
 function getLocalDayRange(now: Date): { startMs: number; endMs: number } {
@@ -85,6 +104,17 @@ function getLocalDayRange(now: Date): { startMs: number; endMs: number } {
   return { startMs: start.getTime(), endMs: end.getTime() };
 }
 
+function normalizeRecordingGpsState(value: string | null | undefined): RecordingGpsState {
+  if (
+    value === 'waiting_for_usable_fix' ||
+    value === 'recording_normally' ||
+    value === 'temporarily_degraded'
+  ) {
+    return value;
+  }
+  return 'recording_normally';
+}
+
 function rowToMetrics(row: RecordRow, nowMs = Date.now()): LiveMetrics {
   const elapsedMs =
     row.status === 'completed'
@@ -94,6 +124,7 @@ function rowToMetrics(row: RecordRow, nowMs = Date.now()): LiveMetrics {
 
   return {
     recordId: row.id,
+    activityType: normalizeActivityType(row.activity_type),
     status: row.status,
     startedAtMs: row.started_at_ms,
     elapsedMs,
@@ -106,30 +137,38 @@ function rowToMetrics(row: RecordRow, nowMs = Date.now()): LiveMetrics {
     elevationGainM: row.elevation_gain_m,
     pointCount: row.point_count,
     syncStatus: row.sync_status,
+    recordingGpsState: normalizeRecordingGpsState(row.recording_gps_state),
   };
 }
 
-export async function createLifeRecord(): Promise<string> {
+export async function createLifeRecord(
+  activityType: Exclude<LiveMetrics['activityType'], 'unknown'>,
+  initialGpsState: RecordingGpsState = 'recording_normally',
+): Promise<string> {
   const db = await getDatabase();
   const id = Crypto.randomUUID();
   const now = Date.now();
   const dateTitle = new Intl.DateTimeFormat('ko-KR', {
     month: 'long',
     day: 'numeric',
-    weekday: 'short',
   }).format(new Date(now));
+  const activityLabel = formatActivityType(activityType);
 
   await db.runAsync(
     `INSERT INTO life_records (
-      id, title, status, started_at_ms, created_at_ms, updated_at_ms
-    ) VALUES (?, ?, 'recording', ?, ?, ?)`,
+      id, title, activity_type, status, started_at_ms, created_at_ms, updated_at_ms,
+      recording_gps_state
+    ) VALUES (?, ?, ?, 'recording', ?, ?, ?, ?)`,
     id,
-    `${dateTitle}의 기록`,
+    `${dateTitle} ${activityLabel} 기록`,
+    activityType,
     now,
     now,
     now,
+    initialGpsState,
   );
 
+  await setLastActivityType(activityType);
   await setActiveRecordId(id);
   return id;
 }
@@ -159,6 +198,37 @@ export async function getActiveRecordId(): Promise<string | null> {
   return row?.value ?? null;
 }
 
+export async function setLastActivityType(
+  activityType: Exclude<LiveMetrics['activityType'], 'unknown'> | null,
+): Promise<void> {
+  const db = await getDatabase();
+
+  if (!activityType) {
+    await db.runAsync(`DELETE FROM app_settings WHERE key = ?`, LAST_ACTIVITY_TYPE_KEY);
+    return;
+  }
+
+  await db.runAsync(
+    `INSERT INTO app_settings(key, value)
+     VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    LAST_ACTIVITY_TYPE_KEY,
+    activityType,
+  );
+}
+
+export async function getLastActivityType(): Promise<
+  Exclude<LiveMetrics['activityType'], 'unknown'> | null
+> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ value: string | null }>(
+    `SELECT value FROM app_settings WHERE key = ?`,
+    LAST_ACTIVITY_TYPE_KEY,
+  );
+
+  return normalizeSelectableActivityType(row?.value ?? null);
+}
+
 export async function updateRecordStatus(
   recordId: string,
   status: RecordStatus,
@@ -176,14 +246,45 @@ export async function updateRecordStatus(
 
 export async function getLiveMetrics(recordId: string): Promise<LiveMetrics | null> {
   const db = await getDatabase();
-  const row = await db.getFirstAsync<RecordRow>(
-    `SELECT * FROM life_records WHERE id = ?`,
-    recordId,
-  );
-  return row ? rowToMetrics(row) : null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const row = await db.getFirstAsync<RecordRow>(
+        `SELECT * FROM life_records WHERE id = ?`,
+        recordId,
+      );
+      return row ? rowToMetrics(row) : null;
+    } catch (error) {
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      throw error;
+    }
+  }
+  return null;
 }
 
 export async function appendLocationBatch(
+  recordId: string,
+  locations: LocationObject[],
+): Promise<void> {
+  if (locations.length === 0) return;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await appendLocationBatchInternal(recordId, locations);
+      return;
+    } catch (error) {
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+async function appendLocationBatchInternal(
   recordId: string,
   locations: LocationObject[],
 ): Promise<void> {
@@ -196,7 +297,9 @@ export async function appendLocationBatch(
   );
   if (!record || record.status !== 'recording') return;
 
-  let lastPoint = await db.getFirstAsync<LastPointRow>(
+  const activityType = normalizeActivityType(record.activity_type);
+
+  let lastAcceptedPoint = await db.getFirstAsync<LastPointRow>(
     `SELECT sequence_no, recorded_at_ms, latitude, longitude, altitude_m
      FROM track_points
      WHERE record_id = ?
@@ -205,59 +308,47 @@ export async function appendLocationBatch(
     recordId,
   );
 
+  let lastAllPoint: LastPointRow | null = lastAcceptedPoint;
+
   let distanceM = record.distance_m;
   let movingMs = record.moving_ms;
   let maxSpeedKph = record.max_speed_kph;
   let currentSpeedKph = record.current_speed_kph;
   let elevationGainM = record.elevation_gain_m;
   let pointCount = record.point_count;
-  let nextSequence = (lastPoint?.sequence_no ?? -1) + 1;
+  let nextSequence = (lastAllPoint?.sequence_no ?? -1) + 1;
+  let recordingGpsState = normalizeRecordingGpsState(record.recording_gps_state);
 
   await db.withExclusiveTransactionAsync(async (transaction) => {
     for (const location of [...locations].sort((a, b) => a.timestamp - b.timestamp)) {
       const accuracyM = sanitizeNumber(location.coords.accuracy);
-      if (accuracyM !== null && accuracyM > MAX_ACCEPTED_ACCURACY_M) continue;
-      if (lastPoint && location.timestamp <= lastPoint.recorded_at_ms) continue;
-
-      let segmentDistanceM = 0;
-      let deltaMs = 0;
-      let calculatedSpeedKph = 0;
-
-      if (lastPoint) {
-        deltaMs = location.timestamp - lastPoint.recorded_at_ms;
-        segmentDistanceM = haversineDistanceM(
-          { latitude: lastPoint.latitude, longitude: lastPoint.longitude },
-          {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          },
-        );
-        calculatedSpeedKph = calculateSpeedKph(segmentDistanceM, deltaMs);
-        if (calculatedSpeedKph > MAX_REASONABLE_SPEED_KPH) continue;
-      }
-
-      const nativeSpeedMps = sanitizeNumber(location.coords.speed);
-      currentSpeedKph =
-        nativeSpeedMps !== null && nativeSpeedMps >= 0
-          ? nativeSpeedMps * 3.6
-          : calculatedSpeedKph;
-
-      if (lastPoint && deltaMs > 0) {
-        distanceM += segmentDistanceM;
-        if (currentSpeedKph >= MOVING_THRESHOLD_KPH) movingMs += deltaMs;
-      }
-
       const altitudeM = sanitizeNumber(location.coords.altitude);
-      if (
-        lastPoint?.altitude_m !== null &&
-        lastPoint?.altitude_m !== undefined &&
-        altitudeM !== null
-      ) {
-        const altitudeDelta = altitudeM - lastPoint.altitude_m;
-        if (altitudeDelta >= 1) elevationGainM += altitudeDelta;
-      }
+      const nativeSpeedMps = sanitizeNumber(location.coords.speed);
 
-      maxSpeedKph = Math.max(maxSpeedKph, currentSpeedKph);
+      const candidate: TrackPoint = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        timestamp: location.timestamp,
+        accuracyM,
+        altitudeM,
+      };
+
+      const previousForValidation: TrackPoint | null = lastAcceptedPoint
+        ? {
+            latitude: lastAcceptedPoint.latitude,
+            longitude: lastAcceptedPoint.longitude,
+            timestamp: lastAcceptedPoint.recorded_at_ms,
+            accuracyM: null,
+            altitudeM: lastAcceptedPoint.altitude_m,
+          }
+        : null;
+
+      const validation = validateGpsPointForMetrics(
+        previousForValidation,
+        candidate,
+        activityType,
+      );
+
       const pointId = Crypto.randomUUID();
 
       const result = await transaction.runAsync(
@@ -279,7 +370,7 @@ export async function appendLocationBatch(
 
       if (result.changes > 0) {
         pointCount += 1;
-        lastPoint = {
+        lastAllPoint = {
           sequence_no: nextSequence,
           recorded_at_ms: location.timestamp,
           latitude: location.coords.latitude,
@@ -288,6 +379,94 @@ export async function appendLocationBatch(
         };
         nextSequence += 1;
       }
+
+      if (!validation.usableForMetrics) {
+        if (__DEV__) {
+          console.debug(
+            `[GPS] point rejected: ${validation.reason}, accuracy=${accuracyM ?? 'null'}`,
+          );
+        }
+
+        if (recordingGpsState === 'recording_normally') {
+          recordingGpsState = 'temporarily_degraded';
+          if (__DEV__) {
+            console.debug('[GPS] degraded signal, metric calculation paused');
+          }
+        }
+        continue;
+      }
+
+      if (recordingGpsState === 'waiting_for_usable_fix') {
+        lastAcceptedPoint = {
+          sequence_no: nextSequence - 1,
+          recorded_at_ms: location.timestamp,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          altitude_m: altitudeM,
+        };
+        recordingGpsState = 'recording_normally';
+        currentSpeedKph = 0;
+        if (__DEV__) {
+          console.debug(
+            `[GPS] usable fix acquired, accuracy=${accuracyM ?? 'null'}`,
+          );
+        }
+        continue;
+      }
+
+      if (recordingGpsState === 'temporarily_degraded') {
+        lastAcceptedPoint = {
+          sequence_no: nextSequence - 1,
+          recorded_at_ms: location.timestamp,
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          altitude_m: altitudeM,
+        };
+        recordingGpsState = 'recording_normally';
+        currentSpeedKph = 0;
+        if (__DEV__) {
+          console.debug('[GPS] signal recovered, new baseline point established');
+        }
+        continue;
+      }
+
+      if (lastAcceptedPoint) {
+        const deltaMs = location.timestamp - lastAcceptedPoint.recorded_at_ms;
+        const segmentDistanceM = haversineDistanceM(
+          { latitude: lastAcceptedPoint.latitude, longitude: lastAcceptedPoint.longitude },
+          { latitude: location.coords.latitude, longitude: location.coords.longitude },
+        );
+        const calculatedSpeedKph = calculateSpeedKph(segmentDistanceM, deltaMs);
+
+        currentSpeedKph =
+          nativeSpeedMps !== null && nativeSpeedMps >= 0
+            ? nativeSpeedMps * 3.6
+            : calculatedSpeedKph;
+
+        if (deltaMs > 0) {
+          distanceM += segmentDistanceM;
+          if (currentSpeedKph >= MOVING_THRESHOLD_KPH) movingMs += deltaMs;
+        }
+
+        if (
+          lastAcceptedPoint.altitude_m !== null &&
+          lastAcceptedPoint.altitude_m !== undefined &&
+          altitudeM !== null
+        ) {
+          const altitudeDelta = altitudeM - lastAcceptedPoint.altitude_m;
+          if (altitudeDelta >= 1) elevationGainM += altitudeDelta;
+        }
+
+        maxSpeedKph = Math.max(maxSpeedKph, currentSpeedKph);
+      }
+
+      lastAcceptedPoint = {
+        sequence_no: nextSequence - 1,
+        recorded_at_ms: location.timestamp,
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        altitude_m: altitudeM,
+      };
     }
 
     const elapsedMs = Math.max(0, Date.now() - record.started_at_ms);
@@ -295,11 +474,16 @@ export async function appendLocationBatch(
     const averageSpeedKph =
       movingMs > 0 ? (distanceM / (movingMs / 1000)) * 3.6 : 0;
 
+    if (recordingGpsState !== 'recording_normally') {
+      currentSpeedKph = 0;
+    }
+
     await transaction.runAsync(
       `UPDATE life_records SET
         elapsed_ms = ?, moving_ms = ?, rest_ms = ?, distance_m = ?,
         current_speed_kph = ?, average_speed_kph = ?, max_speed_kph = ?,
-        elevation_gain_m = ?, point_count = ?, updated_at_ms = ?
+        elevation_gain_m = ?, point_count = ?, recording_gps_state = ?,
+        updated_at_ms = ?
        WHERE id = ?`,
       elapsedMs,
       movingMs,
@@ -310,6 +494,7 @@ export async function appendLocationBatch(
       maxSpeedKph,
       elevationGainM,
       pointCount,
+      recordingGpsState,
       Date.now(),
       recordId,
     );
@@ -358,7 +543,7 @@ export async function completeLifeRecord(recordId: string): Promise<void> {
   });
 }
 
-export async function listLifeRecords(limit = 50): Promise<LifeRecordSummary[]> {
+export async function listLifeRecords(limit = 50): Promise<ActivityRecordSummary[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<RecordRow>(
     `SELECT * FROM life_records ORDER BY started_at_ms DESC LIMIT ?`,
@@ -372,9 +557,11 @@ export async function listLifeRecords(limit = 50): Promise<LifeRecordSummary[]> 
   }));
 }
 
+export const listActivityRecords = listLifeRecords;
+
 export async function getTodaySummary(
   now: Date = new Date(),
-): Promise<TodaySummary> {
+): Promise<TodayActivitySummary> {
   const db = await getDatabase();
   const { startMs, endMs } = getLocalDayRange(now);
 
@@ -443,7 +630,15 @@ export async function getRecordUploadPayload(recordId: string) {
      FROM track_points WHERE record_id = ? ORDER BY sequence_no`,
     recordId,
   );
-  return record ? { record, points } : null;
+  return record
+    ? {
+        record: (({ activity_type, ...rest }) => ({
+          ...rest,
+          activityType: normalizeActivityType(activity_type),
+        }))(record),
+        points,
+      }
+    : null;
 }
 
 export async function markSyncState(
@@ -471,6 +666,15 @@ export async function listPendingSyncItems() {
      ORDER BY created_at_ms`,
     Date.now(),
   );
+}
+
+export async function getPendingSyncRecordCount(): Promise<number> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM life_records
+     WHERE status = 'completed' AND sync_status IN ('pending', 'syncing', 'failed')`,
+  );
+  return row?.count ?? 0;
 }
 
 export async function completeSyncQueueItem(queueId: string): Promise<void> {

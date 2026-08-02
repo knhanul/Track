@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
   type ViewStyle,
 } from 'react-native';
 
@@ -14,10 +15,10 @@ interface Props {
   label: string;
   icon?: ReactNode;
   onPress(): void;
-  variant?: 'primary' | 'secondary' | 'danger';
+  variant?: 'primary' | 'secondary' | 'danger' | 'dangerOutline';
   disabled?: boolean;
   loading?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function ActionButton({
@@ -65,6 +66,11 @@ const styles = StyleSheet.create({
   primary: { backgroundColor: colors.primaryStrong },
   secondary: { backgroundColor: colors.surfaceElevated },
   danger: { backgroundColor: colors.danger },
+  dangerOutline: {
+    backgroundColor: colors.dangerSoft,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.45 },
   content: {

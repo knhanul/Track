@@ -38,6 +38,7 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
+      "expo-splash-screen",
       "expo-sqlite",
       "expo-secure-store",
       [

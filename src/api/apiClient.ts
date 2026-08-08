@@ -37,6 +37,9 @@ export async function apiFetch(
   }
 
   const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  if (__DEV__) {
+    console.log('[apiFetch] request', { url, method: init.method ?? 'GET', auth: options.auth ?? false });
+  }
   const headers = new Headers(init.headers);
   const auth = options.auth ?? false;
   const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
@@ -53,6 +56,10 @@ export async function apiFetch(
     ...init,
     headers,
   });
+
+  if (__DEV__) {
+    console.log('[apiFetch] response', { url, status: response.status, ok: response.ok });
+  }
 
   if (
     response.status === 401 &&
@@ -84,6 +91,10 @@ export async function apiFetchJson<T>(
 ): Promise<T> {
   const response = await apiFetch(path, init, options);
   const text = await response.text();
+
+  if (__DEV__) {
+    console.log('[apiFetchJson] body', { path, status: response.status, text });
+  }
 
   if (!response.ok) {
     throw new ApiError(response.status, text || `HTTP ${response.status}`);

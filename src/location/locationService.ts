@@ -1,6 +1,9 @@
 import * as Location from 'expo-location';
 
+import { appendLocationBatch, getActiveRecordId } from '../database/recordRepository';
 import { LOCATION_TASK_NAME } from './backgroundLocationTask';
+
+let foregroundLocationSubscription: Location.LocationSubscription | null = null;
 
 export async function hasLocationServicesEnabled(): Promise<boolean> {
   return Location.hasServicesEnabledAsync();
@@ -50,28 +53,32 @@ export async function getCurrentLocationAccuracyM(): Promise<number | null> {
 }
 
 export async function startBackgroundTracking(): Promise<void> {
-  const alreadyStarted =
-    await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
-  if (alreadyStarted) return;
+  await stopLegacyBackgroundTracking();
+  if (foregroundLocationSubscription) return;
 
-  await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.BestForNavigation,
-    timeInterval: 1000,
-    distanceInterval: 1,
-    deferredUpdatesInterval: 3000,
-    deferredUpdatesDistance: 5,
-    activityType: Location.ActivityType.Fitness,
-    pausesUpdatesAutomatically: false,
-    showsBackgroundLocationIndicator: true,
-    foregroundService: {
-      notificationTitle: 'nuni track 활동 기록 중',
-      notificationBody: '야외활동의 이동 경로를 기기에 안전하게 저장하고 있어요.',
-      notificationColor: '#2DD4BF',
+  foregroundLocationSubscription = await Location.watchPositionAsync(
+    {
+      accuracy: Location.Accuracy.BestForNavigation,
+      timeInterval: 1000,
+      distanceInterval: 1,
     },
-  });
+    (location) => {
+      void (async () => {
+        const recordId = await getActiveRecordId();
+        if (!recordId) return;
+        await appendLocationBatch(recordId, [location]);
+      })();
+    },
+  );
 }
 
 export async function stopBackgroundTracking(): Promise<void> {
+  foregroundLocationSubscription?.remove();
+  foregroundLocationSubscription = null;
+  await stopLegacyBackgroundTracking();
+}
+
+export async function stopLegacyBackgroundTracking(): Promise<void> {
   const started =
     await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
   if (started) {

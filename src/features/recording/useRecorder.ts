@@ -62,6 +62,7 @@ export function useRecorder(): RecorderController {
       return;
     }
     setActiveRecordId(id);
+    await startBackgroundTracking();
     await refresh(id);
   }, [refresh]);
 

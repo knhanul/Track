@@ -144,30 +144,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    console.log('[google-signin] signInWithGoogle called, configured:', isGoogleAuthConfigured());
     setStatus('signing_in');
     setErrorMessage(null);
 
     try {
       await GoogleOneTapSignIn.checkPlayServices();
+      console.log('[google-signin] checkPlayServices OK');
 
       let response = await GoogleOneTapSignIn.signIn();
+      console.log('[google-signin] signIn response type:', response.type);
       if (isNoSavedCredentialFoundResponse(response)) {
         response = await GoogleOneTapSignIn.createAccount();
+        console.log('[google-signin] createAccount response type:', response.type);
       }
       if (isNoSavedCredentialFoundResponse(response)) {
         response = await GoogleOneTapSignIn.presentExplicitSignIn();
+        console.log('[google-signin] presentExplicitSignIn response type:', response.type);
       }
 
       if (isCancelledResponse(response)) {
+        console.log('[google-signin] cancelled');
         setStatus('signed_out');
         return;
       }
 
       if (!isSuccessResponse(response) || !response.data?.idToken) {
+        console.log('[google-signin] no idToken');
         setStatus('signed_out');
         setErrorMessage('Google 계정을 확인하지 못했어요.\n잠시 후 다시 시도해 주세요.');
         return;
       }
+      console.log('[google-signin] success');
 
       const appVersion = Constants.expoConfig?.version ?? '0.0.0';
       const session = await signInWithGoogleOnServer({
@@ -180,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('signed_in');
       triggerSyncNow();
     } catch (error) {
+      console.log('[google-signin] catch error:', String(error));
       if (isErrorWithCode(error) && error.code === statusCodes.SIGN_IN_CANCELLED) {
         setStatus('signed_out');
         return;

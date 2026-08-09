@@ -35,7 +35,7 @@ export async function refreshSessionOnServer(refreshToken: string): Promise<Auth
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ refreshToken } satisfies RefreshRequest),
+      body: JSON.stringify({ refreshToken } as RefreshRequest),
     },
     { auth: false, retryOnUnauthorized: false },
   );

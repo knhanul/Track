@@ -98,12 +98,16 @@ export function formatSyncStatus(syncStatus: SyncStatus): string {
     case 'local_only':
       return '기기 저장';
     case 'pending':
+    case 'pending_create':
+    case 'pending_update':
+    case 'pending_delete':
       return '업로드 대기';
     case 'syncing':
       return '동기화 중';
     case 'synced':
       return '클라우드 저장';
     case 'failed':
+    case 'sync_error':
       return '업로드 실패';
     default:
       return '기기 저장';

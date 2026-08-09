@@ -16,7 +16,9 @@ export async function initializeDatabase(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS life_records (
       id TEXT PRIMARY KEY NOT NULL,
+      server_id TEXT,
       title TEXT NOT NULL,
+      note TEXT,
       activity_type TEXT NOT NULL DEFAULT 'unknown',
       status TEXT NOT NULL,
       started_at_ms INTEGER NOT NULL,
@@ -31,6 +33,8 @@ export async function initializeDatabase(): Promise<void> {
       elevation_gain_m REAL NOT NULL DEFAULT 0,
       point_count INTEGER NOT NULL DEFAULT 0,
       sync_status TEXT NOT NULL DEFAULT 'local_only',
+      server_updated_at_ms INTEGER,
+      deleted_at_ms INTEGER,
       created_at_ms INTEGER NOT NULL,
       updated_at_ms INTEGER NOT NULL
     );
@@ -83,5 +87,25 @@ export async function initializeDatabase(): Promise<void> {
 
   if (!hasRecordingGpsState) {
     await db.execAsync(`ALTER TABLE life_records ADD COLUMN recording_gps_state TEXT NOT NULL DEFAULT 'recording_normally';`);
+  }
+
+  const hasServerId = lifeRecordsColumns.some((column) => column.name === 'server_id');
+  if (!hasServerId) {
+    await db.execAsync(`ALTER TABLE life_records ADD COLUMN server_id TEXT;`);
+  }
+
+  const hasNote = lifeRecordsColumns.some((column) => column.name === 'note');
+  if (!hasNote) {
+    await db.execAsync(`ALTER TABLE life_records ADD COLUMN note TEXT;`);
+  }
+
+  const hasServerUpdatedAt = lifeRecordsColumns.some((column) => column.name === 'server_updated_at_ms');
+  if (!hasServerUpdatedAt) {
+    await db.execAsync(`ALTER TABLE life_records ADD COLUMN server_updated_at_ms INTEGER;`);
+  }
+
+  const hasDeletedAt = lifeRecordsColumns.some((column) => column.name === 'deleted_at_ms');
+  if (!hasDeletedAt) {
+    await db.execAsync(`ALTER TABLE life_records ADD COLUMN deleted_at_ms INTEGER;`);
   }
 }

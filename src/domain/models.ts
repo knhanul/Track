@@ -2,7 +2,16 @@ import type { ActivityType, SelectableActivityType } from './activityType';
 import type { RecordingGpsState } from '../location/gpsQuality';
 
 export type RecordStatus = 'recording' | 'paused' | 'completed';
-export type SyncStatus = 'local_only' | 'pending' | 'syncing' | 'synced' | 'failed';
+export type SyncStatus =
+  | 'local_only'
+  | 'pending'
+  | 'pending_create'
+  | 'pending_update'
+  | 'pending_delete'
+  | 'syncing'
+  | 'synced'
+  | 'failed'
+  | 'sync_error';
 export type { RecordingGpsState } from '../location/gpsQuality';
 
 export interface LiveMetrics {

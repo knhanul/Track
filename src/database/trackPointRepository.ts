@@ -7,6 +7,8 @@ export interface TrackPointRow {
   longitude: number;
   altitude_m: number | null;
   accuracy_m: number | null;
+  speed_mps: number | null;
+  heading: number | null;
 }
 
 export async function getTrackPoints(
@@ -17,7 +19,7 @@ export async function getTrackPoints(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await db.getAllAsync<TrackPointRow>(
-        `SELECT sequence_no, recorded_at_ms, latitude, longitude, altitude_m, accuracy_m
+        `SELECT sequence_no, recorded_at_ms, latitude, longitude, altitude_m, accuracy_m, speed_mps, heading
          FROM track_points
          WHERE record_id = ? AND sequence_no > ?
          ORDER BY sequence_no ASC`,

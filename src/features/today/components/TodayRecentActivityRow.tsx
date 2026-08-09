@@ -53,12 +53,16 @@ export function TodayRecentActivityRow({ record, onPress }: TodayRecentActivityR
 function getSyncColor(status: ActivityRecordSummary['syncStatus']): string {
   switch (status) {
     case 'pending':
+    case 'pending_create':
+    case 'pending_update':
+    case 'pending_delete':
       return colors.warning;
     case 'syncing':
       return colors.primary;
     case 'synced':
       return colors.success;
     case 'failed':
+    case 'sync_error':
       return colors.danger;
     case 'local_only':
     default:

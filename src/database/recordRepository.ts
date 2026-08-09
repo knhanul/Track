@@ -11,10 +11,11 @@ import type {
   TodayActivitySummary,
 } from '../domain/models';
 import type { RecordingGpsState } from '../location/gpsQuality';
-import {
-  type TrackPoint,
-  validateGpsPointForMetrics,
+import type {
+  TrackPoint,
 } from '../location/gpsPointValidation';
+import { validateGpsPointForMetrics } from '../location/gpsPointValidation';
+import type { TrackPointRow } from './trackPointRepository';
 import { getDatabase } from './database';
 
 const ACTIVE_RECORD_KEY = 'active_record_id';
@@ -23,7 +24,9 @@ const MOVING_THRESHOLD_KPH = 1;
 
 interface RecordRow {
   id: string;
+  server_id: string | null;
   title: string;
+  note: string | null;
   activity_type: string;
   status: RecordStatus;
   started_at_ms: number;
@@ -38,6 +41,8 @@ interface RecordRow {
   elevation_gain_m: number;
   point_count: number;
   sync_status: SyncStatus;
+  server_updated_at_ms: number | null;
+  deleted_at_ms: number | null;
   recording_gps_state: string;
 }
 
@@ -518,7 +523,7 @@ export async function completeLifeRecord(recordId: string): Promise<void> {
     await transaction.runAsync(
       `UPDATE life_records SET
         status = 'completed', ended_at_ms = ?, elapsed_ms = ?, rest_ms = ?,
-        current_speed_kph = 0, sync_status = 'pending', updated_at_ms = ?
+        current_speed_kph = 0, sync_status = 'pending_create', updated_at_ms = ?
        WHERE id = ?`,
       now,
       elapsedMs,
@@ -530,7 +535,7 @@ export async function completeLifeRecord(recordId: string): Promise<void> {
     await transaction.runAsync(
       `INSERT INTO sync_queue (
         id, entity_type, entity_id, operation, created_at_ms
-       ) VALUES (?, 'life_record', ?, 'upsert', ?)`,
+       ) VALUES (?, 'activity', ?, 'activity_upsert', ?)`,
       queueId,
       recordId,
       now,
@@ -546,7 +551,7 @@ export async function completeLifeRecord(recordId: string): Promise<void> {
 export async function listLifeRecords(limit = 50): Promise<ActivityRecordSummary[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<RecordRow>(
-    `SELECT * FROM life_records ORDER BY started_at_ms DESC LIMIT ?`,
+    `SELECT * FROM life_records WHERE deleted_at_ms IS NULL ORDER BY started_at_ms DESC LIMIT ?`,
     limit,
   );
 
@@ -574,13 +579,14 @@ export async function getTodaySummary(
       COALESCE(SUM(rest_ms), 0) AS total_rest_ms,
       COALESCE(SUM(elevation_gain_m), 0) AS total_elevation_gain_m,
       COALESCE(SUM(CASE
-        WHEN sync_status IN ('pending', 'syncing', 'failed') THEN 1
+        WHEN sync_status IN ('pending', 'pending_create', 'pending_update', 'pending_delete', 'syncing', 'failed', 'sync_error') THEN 1
         ELSE 0
       END), 0) AS pending_sync_count
      FROM life_records
      WHERE started_at_ms >= ?
        AND started_at_ms < ?
-       AND status = 'completed'`,
+       AND status = 'completed'
+       AND deleted_at_ms IS NULL`,
     startMs,
     endMs,
   );
@@ -591,6 +597,7 @@ export async function getTodaySummary(
      WHERE started_at_ms >= ?
        AND started_at_ms < ?
        AND status = 'completed'
+       AND deleted_at_ms IS NULL
      ORDER BY started_at_ms DESC
      LIMIT 5`,
     startMs,
@@ -624,7 +631,7 @@ export async function getRecordUploadPayload(recordId: string) {
     `SELECT * FROM life_records WHERE id = ?`,
     recordId,
   );
-  const points = await db.getAllAsync(
+  const points = await db.getAllAsync<TrackPointRow>(
     `SELECT id, sequence_no, recorded_at_ms, latitude, longitude,
       altitude_m, accuracy_m, speed_mps, heading
      FROM track_points WHERE record_id = ? ORDER BY sequence_no`,
@@ -632,10 +639,27 @@ export async function getRecordUploadPayload(recordId: string) {
   );
   return record
     ? {
-        record: (({ activity_type, ...rest }) => ({
-          ...rest,
-          activityType: normalizeActivityType(activity_type),
-        }))(record),
+        record: {
+          id: record.id,
+          serverId: record.server_id,
+          title: record.title,
+          note: record.note,
+          activityType: normalizeActivityType(record.activity_type),
+          status: record.status,
+          startedAtMs: record.started_at_ms,
+          endedAtMs: record.ended_at_ms,
+          elapsedMs: record.elapsed_ms,
+          movingMs: record.moving_ms,
+          restMs: record.rest_ms,
+          distanceM: record.distance_m,
+          averageSpeedKph: record.average_speed_kph,
+          maxSpeedKph: record.max_speed_kph,
+          elevationGainM: record.elevation_gain_m,
+          pointCount: record.point_count,
+          syncStatus: record.sync_status,
+          serverUpdatedAtMs: record.server_updated_at_ms,
+          deletedAtMs: record.deleted_at_ms,
+        },
         points,
       }
     : null;
@@ -658,10 +682,12 @@ export async function listPendingSyncItems() {
   const db = await getDatabase();
   return db.getAllAsync<{
     id: string;
+    entity_type: string;
     entity_id: string;
+    operation: string;
     attempt_count: number;
   }>(
-    `SELECT id, entity_id, attempt_count FROM sync_queue
+    `SELECT id, entity_type, entity_id, operation, attempt_count FROM sync_queue
      WHERE next_retry_at_ms IS NULL OR next_retry_at_ms <= ?
      ORDER BY created_at_ms`,
     Date.now(),
@@ -672,7 +698,8 @@ export async function getPendingSyncRecordCount(): Promise<number> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<{ count: number }>(
     `SELECT COUNT(*) AS count FROM life_records
-     WHERE status = 'completed' AND sync_status IN ('pending', 'syncing', 'failed')`,
+     WHERE status = 'completed' AND deleted_at_ms IS NULL
+       AND sync_status IN ('pending', 'pending_create', 'pending_update', 'pending_delete', 'syncing', 'failed', 'sync_error')`,
   );
   return row?.count ?? 0;
 }
@@ -696,5 +723,180 @@ export async function failSyncQueueItem(
     errorMessage.slice(0, 500),
     Date.now() + delayMs,
     queueId,
+  );
+}
+
+export async function getLifeRecordByLocalId(recordId: string): Promise<RecordRow | null> {
+  const db = await getDatabase();
+  return db.getFirstAsync<RecordRow>(`SELECT * FROM life_records WHERE id = ?`, recordId);
+}
+
+export async function getLifeRecordByServerId(serverId: string): Promise<RecordRow | null> {
+  const db = await getDatabase();
+  return db.getFirstAsync<RecordRow>(`SELECT * FROM life_records WHERE server_id = ?`, serverId);
+}
+
+export interface RemoteActivitySnapshot {
+  id: string;
+  clientId: string;
+  activityType: string;
+  startedAt: string;
+  endedAt: string | null;
+  distanceM: number;
+  movingTimeSec: number;
+  elapsedTimeSec: number;
+  elevationGainM: number;
+  averageSpeedMps: number;
+  maxSpeedMps: number;
+  title: string;
+  note: string | null;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface RemoteTrackPointSnapshot {
+  seqNo: number;
+  recordedAt: string;
+  latitude: number;
+  longitude: number;
+  altitudeM: number | null;
+  accuracyM: number | null;
+  speedMps: number | null;
+  headingDeg: number | null;
+}
+
+export async function upsertRemoteActivitySnapshot(
+  snapshot: RemoteActivitySnapshot,
+  points: RemoteTrackPointSnapshot[] = [],
+): Promise<string> {
+  const db = await getDatabase();
+  const localId = snapshot.clientId || snapshot.id;
+  const startedAtMs = Date.parse(snapshot.startedAt);
+  const endedAtMs = snapshot.endedAt ? Date.parse(snapshot.endedAt) : null;
+  const serverUpdatedAtMs = Date.parse(snapshot.updatedAt);
+  const deletedAtMs = snapshot.deletedAt ? Date.parse(snapshot.deletedAt) : null;
+  const existingByLocal = await db.getFirstAsync<RecordRow>(`SELECT * FROM life_records WHERE id = ?`, localId);
+  const existingByServer = existingByLocal ? null : await db.getFirstAsync<RecordRow>(`SELECT * FROM life_records WHERE server_id = ?`, snapshot.id);
+
+  const targetId = existingByLocal?.id ?? existingByServer?.id ?? localId;
+  const targetServerId = snapshot.id;
+  const syncStatus: SyncStatus = deletedAtMs ? 'synced' : 'synced';
+  const status = snapshot.endedAt || deletedAtMs ? 'completed' : 'recording';
+  const now = Date.now();
+
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    if (existingByLocal || existingByServer) {
+      await transaction.runAsync(
+        `UPDATE life_records SET
+          server_id = ?, title = ?, note = ?, activity_type = ?, status = ?,
+          started_at_ms = ?, ended_at_ms = ?, elapsed_ms = ?, moving_ms = ?, rest_ms = ?,
+          distance_m = ?, average_speed_kph = ?, max_speed_kph = ?, elevation_gain_m = ?,
+          sync_status = ?, server_updated_at_ms = ?, deleted_at_ms = ?, updated_at_ms = ?
+         WHERE id = ?`,
+        targetServerId,
+        snapshot.title,
+        snapshot.note,
+        normalizeActivityType(snapshot.activityType),
+        status,
+        startedAtMs,
+        endedAtMs,
+        snapshot.elapsedTimeSec * 1000,
+        snapshot.movingTimeSec * 1000,
+        Math.max(0, snapshot.elapsedTimeSec * 1000 - snapshot.movingTimeSec * 1000),
+        snapshot.distanceM,
+        snapshot.averageSpeedMps * 3.6,
+        snapshot.maxSpeedMps * 3.6,
+        snapshot.elevationGainM,
+        syncStatus,
+        Number.isFinite(serverUpdatedAtMs) ? serverUpdatedAtMs : now,
+        deletedAtMs,
+        now,
+        targetId,
+      );
+    } else {
+      await transaction.runAsync(
+        `INSERT INTO life_records (
+          id, server_id, title, note, activity_type, status, started_at_ms, ended_at_ms,
+          elapsed_ms, moving_ms, rest_ms, distance_m, current_speed_kph, average_speed_kph,
+          max_speed_kph, elevation_gain_m, point_count, sync_status, server_updated_at_ms,
+          deleted_at_ms, created_at_ms, updated_at_ms, recording_gps_state
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recording_normally')`,
+        targetId,
+        targetServerId,
+        snapshot.title,
+        snapshot.note,
+        normalizeActivityType(snapshot.activityType),
+        status,
+        startedAtMs,
+        endedAtMs,
+        snapshot.elapsedTimeSec * 1000,
+        snapshot.movingTimeSec * 1000,
+        Math.max(0, snapshot.elapsedTimeSec * 1000 - snapshot.movingTimeSec * 1000),
+        snapshot.distanceM,
+        snapshot.averageSpeedMps * 3.6,
+        snapshot.maxSpeedMps * 3.6,
+        snapshot.elevationGainM,
+        points.length,
+        syncStatus,
+        Number.isFinite(serverUpdatedAtMs) ? serverUpdatedAtMs : now,
+        deletedAtMs,
+        now,
+        now,
+      );
+    }
+
+    if (points.length > 0) {
+      for (const point of points) {
+        await transaction.runAsync(
+          `INSERT OR IGNORE INTO track_points (
+            id, record_id, sequence_no, recorded_at_ms, latitude, longitude,
+            altitude_m, accuracy_m, speed_mps, heading
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          Crypto.randomUUID(),
+          targetId,
+          point.seqNo,
+          Date.parse(point.recordedAt),
+          point.latitude,
+          point.longitude,
+          point.altitudeM,
+          point.accuracyM,
+          point.speedMps,
+          point.headingDeg,
+        );
+      }
+      await transaction.runAsync(
+        `UPDATE life_records SET point_count = (SELECT COUNT(*) FROM track_points WHERE record_id = ?) WHERE id = ?`,
+        targetId,
+        targetId,
+      );
+    }
+  });
+
+  return targetId;
+}
+
+export async function markRecordServerSynced(
+  recordId: string,
+  serverId: string,
+  serverUpdatedAtMs: number,
+): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE life_records SET server_id = ?, server_updated_at_ms = ?, sync_status = 'synced', updated_at_ms = ? WHERE id = ?`,
+    serverId,
+    serverUpdatedAtMs,
+    Date.now(),
+    recordId,
+  );
+}
+
+export async function markRecordSoftDeleted(recordId: string, syncStatus: SyncStatus = 'pending_delete'): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync(
+    `UPDATE life_records SET deleted_at_ms = ?, sync_status = ?, updated_at_ms = ? WHERE id = ?`,
+    Date.now(),
+    syncStatus,
+    Date.now(),
+    recordId,
   );
 }

@@ -77,8 +77,8 @@ export function validateGpsPointForMetrics(
     }
 
     const segmentDistanceM = haversineDistanceM(
-      { latitude: previousPoint.latitude, longitude: previousPoint.longitude } satisfies Coordinate,
-      { latitude: candidate.latitude, longitude: candidate.longitude } satisfies Coordinate,
+      { latitude: previousPoint.latitude, longitude: previousPoint.longitude } as Coordinate,
+      { latitude: candidate.latitude, longitude: candidate.longitude } as Coordinate,
     );
 
     const speedKph = (segmentDistanceM / (deltaMs / 1000)) * 3.6;
